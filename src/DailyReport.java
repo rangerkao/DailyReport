@@ -23,9 +23,27 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
+
+import javax.activation.DataHandler;
+import javax.activation.DataSource;
+import javax.activation.FileDataSource;
+import javax.mail.BodyPart;
+import javax.mail.Message;
+import javax.mail.MessagingException;
+import javax.mail.Multipart;
+import javax.mail.Session;
+import javax.mail.Transport;
+import javax.mail.internet.AddressException;
+import javax.mail.internet.InternetAddress;
+import javax.mail.internet.MimeBodyPart;
+import javax.mail.internet.MimeMessage;
+import javax.mail.internet.MimeMultipart;
 
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
@@ -75,8 +93,15 @@ public class DailyReport implements Runnable{
 					if(now.equals(props.getProperty("US.StartTime"))||testMode){
 						USReportSend = true;
 					}
+					System.out.println("watcherCRM");
 					if(now.equals(props.getProperty("CRM.StartTime"))||testMode){
-						CRMReportSend = true;
+						
+						Calendar cal = Calendar.getInstance();
+						int week = cal.get(Calendar.DAY_OF_WEEK);
+						
+						if(2<=week && week<=6 ){
+							CRMReportSend = true;
+						}
 					}
 					
 					
@@ -125,7 +150,7 @@ public class DailyReport implements Runnable{
 				logger.info("US Report starting...");
 				try {
 					connectDB();
-					sendVolumeReport();
+					//sendVolumeReport();
 					USReportSend = false;
 				} catch (Exception e) {
 					ErrorHandle("Can't send US Report!",e);
@@ -141,7 +166,7 @@ public class DailyReport implements Runnable{
 				logger.info("CRM Report starting...");
 				try {
 					connectDB();
-					sendCRMReport();
+					//sendCRMReport();
 					CRMReportSend = false;
 				} catch (Exception e) {
 					ErrorHandle("Can't send CRM Report!",e);
@@ -163,9 +188,11 @@ public class DailyReport implements Runnable{
 	}
 	
 	
-	public static void sendCRMReport(){
+	public  void sendCRMReport() throws AddressException, MessagingException, IOException{
 		
-		String fileName = "nameBinding_"+new SimpleDateFormat("yyyyMMdd").format(new Date())+".xlsx";
+		Date now = new Date();
+		String sDate = new SimpleDateFormat("yyyyMMdd").format(now);
+		String fileName = "nameBinding_"+sDate+".xlsx";
 		List<Map<String,String>> head = new ArrayList<Map<String,String>>();
 		List<Map<String,Object>> data = new ArrayList<Map<String,Object>>();
 		
@@ -197,23 +224,35 @@ public class DailyReport implements Runnable{
 		m.put("col", "location");
 		head.add(m);
 		
+		m= new HashMap<String,String>();
+		m.put("name", "中華號");
+		m.put("col", "chtMsisdn");
+		head.add(m);
+		
+		m= new HashMap<String,String>();
+		m.put("name", "備註");
+		m.put("col", "remark");
+		head.add(m);
 		
 		
-		Connection conn = null;
+		String mailContent = "實名制Report:\n\n";
+		
+		Set<String> canceledServiceid = new HashSet<String>();
 		Statement st = null;
+		Statement st2 = null;
 		ResultSet rs = null;
 		try {
-			conn = DriverManager.getConnection("jdbc:mysql://192.168.10.199:3306/CRM_DB?characterEncoding=utf8", "crmuser", "crm");
-			st = conn.createStatement();
+
+			conn3 = DriverManager.getConnection("jdbc:mysql://192.168.10.199:3306/CRM_DB?characterEncoding=utf8", "crmuser", "crm");
+			st = conn3.createStatement();
 			
-			String sql = "select serviceid,name,id,type,chinaMsisdn "
+			String sql = "select serviceid,name,id,type,chinaMsisdn,chtMsisdn,remark "
 					+ "from CRM_DB.CRM_NAME_VERIFIED "
-					+ "where send_date is null ";
+					+ "where send_date is null or send_date ='' ";
 			
-			out.println("Execute SQL:"+sql);
-			
+			logger.info("Execute SQL:"+sql);
 			rs =st.executeQuery(sql);
-			
+			logger.info("Query End!");
 			
 			while(rs.next()){
 				Map<String,Object> m2 = new HashMap<String,Object>();
@@ -221,49 +260,139 @@ public class DailyReport implements Runnable{
 				m2.put("id", rs.getString("id"));
 				m2.put("type", rs.getString("type"));
 				m2.put("chinaMsisdn", rs.getString("chinaMsisdn"));
-				m2.put("location", "Taiwan");
+				m2.put("location", "台湾");
+				m2.put("chtMsisdn", rs.getString("chtMsisdn"));
+				m2.put("remark", rs.getString("remark"));
 				data.add(m2);
 			}
 			rs.close();
+			
+			logger.info("Create File "+fileName);
 			Workbook wb = createExcel(head,data,"xlsx");
 			File f = new File(fileName);
 			FileOutputStream fo = new FileOutputStream(f);
 			wb.write(fo);
 			fo.close();
 			
+			logger.info("Create File End...");
 			
+			//將已退租的更改為歷史
+			
+			sql = "select serviceid from service A where to_char(A.datecanceled,'yyyyMMdd') <= '"+sDate+"' "
+					+ "and to_char(A.datecanceled+3,'yyyyMMdd') >='"+sDate+"' ";
+			st2 = conn.createStatement();
+			logger.info("Execute SQL:"+sql);
+			rs = st2.executeQuery(sql);
+			
+			while(rs.next()){
+				canceledServiceid.add(rs.getString("serviceid"));
+			}
+			
+			String serviceidInQuery = "";
+			Iterator<String> it = canceledServiceid.iterator();
+			for(int i = 1 ;it.hasNext();i++){
+				serviceidInQuery+= it.next();
+				if(i>=1000){
+					sql = "update CRM_DB.CRM_NAME_VERIFIED set status = '0' where status = '1' and serviceid in ( "+serviceidInQuery+" ) ";
+					logger.info("Execute SQL:"+sql);
+					st.executeUpdate(sql);
+					serviceidInQuery = "";
+				}else{
+					serviceidInQuery+=",";
+				}
+			}
+			
+			if(!"".equals(serviceidInQuery)){
+				sql = "update CRM_DB.CRM_NAME_VERIFIED set status = '0' where status = '1' and serviceid in ( "+serviceidInQuery.substring(0,serviceidInQuery.length()-1)+" ) ";
+				logger.info("Execute SQL:"+sql);
+				st.executeUpdate(sql);
+				serviceidInQuery = "";
+			}
+			
+			mailContent += "重複驗證的中國號:"+"\n";
+			mailContent += "\t"+"中國號"+"\t"+"數量"+"\n";
 			//20161129 驗證已import內容
 			//重複的中國號
-			sql = "select chinaMsisdn,count(1) CD from CRM_DB.CRM_NAME_VERIFIED group by chinaMsisdn having count(1)>1 ";
+			sql = "select chinaMsisdn,count(1) CD from CRM_DB.CRM_NAME_VERIFIED where status = 1 group by chinaMsisdn having count(1)>1 ";
+			logger.info("Execute SQL:"+sql);
+			rs =st.executeQuery(sql);
+			
+			while(rs.next()){
+				mailContent += "\t"+rs.getString("chinaMsisdn")+"\t"+rs.getString("CD")+"\n";
+			}
+			
+			mailContent += "\n";
+			mailContent += "重複的中華號資料:"+"\n";
+			mailContent += "\t"+"中華號"+"\t"+"數量"+"\n";
 			//重複的中華號
-			sql = "select chtMsisdn,count(1) CD from CRM_DB.CRM_NAME_VERIFIED group by chtMsisdn 	having count(1)>1 ";
+			sql = "select chtMsisdn,count(1) CD from CRM_DB.CRM_NAME_VERIFIED where status = 1  group by chtMsisdn 	having count(1)>1 ";
+			logger.info("Execute SQL:"+sql);
+			rs =st.executeQuery(sql);
+			
+			while(rs.next()){
+				mailContent += "\t"+rs.getString("chtMsisdn")+"\t"+rs.getString("CD")+"\n";
+			}
+			
+			mailContent += "\n";
+			mailContent += "一證件認證超過5個號碼:"+"\n";
+			mailContent += "\t"+"證號"+"\t"+"數量"+"\n";
 			//重複數大於5的證號
-			sql = "select id,count(1) CD from CRM_DB.CRM_NAME_VERIFIED group by id having count(1)>5 ";
+			sql = "select id,count(1) CD from CRM_DB.CRM_NAME_VERIFIED where status = 1 group by id having count(1)>5 ";
+			logger.info("Execute SQL:"+sql);
+			rs =st.executeQuery(sql);
+			
+			while(rs.next()){
+				mailContent += "\t"+rs.getString("id")+"\t"+rs.getString("CD")+"\n";
+			}
+			
+			mailContent += "\n";
+			mailContent += "同證號不同名字:"+"\n";
+			mailContent += "\t"+"證號"+"\t"+"名稱1"+"\t"+"名稱2"+"\n";
 			//同名不同證號
-			sql = "select distinct A.name,A.id,B.id from CRM_DB.CRM_NAME_VERIFIED A inner join CRM_DB.CRM_NAME_VERIFIED B on A.name = B.name "
-					+ "where  A.type=B.type and A.id<>B.id " ;
+			sql = "select distinct A.name AN,A.id AD,B.name BN from CRM_DB.CRM_NAME_VERIFIED A inner join CRM_DB.CRM_NAME_VERIFIED B on A.id = B.id "
+					+ "where A.status=1 and B.status=1 and (A.name<>B.name or A.type<>B.type) " ;
+			logger.info("Execute SQL:"+sql);
+			rs =st.executeQuery(sql);
+			
+			while(rs.next()){
+				mailContent += "\t"+rs.getString("AD")+"\t"+rs.getString("AN")+"\t"+rs.getString("BN")+"\n";
+			}
+			
+			
+			//更新SendDate
+			sql  = "update CRM_DB.CRM_NAME_VERIFIED set send_date = '"+new SimpleDateFormat("yyyy/MM/dd").format(now)+"' "
+					+ "where send_date is null or send_date ='' ";
+			logger.info("Execute SQL:"+sql);
+			st.executeUpdate(sql);
+			
+			//備份資料庫
+			sql  = "delete from CRM_DB.CRM_NAME_VERIFIED_BAK ";
+			logger.info("Execute SQL:"+sql);
+			st.executeUpdate(sql);
+			sql  = "insert into CRM_DB.CRM_NAME_VERIFIED_BAK select * from CRM_DB.CRM_NAME_VERIFIED ";
+			logger.info("Execute SQL:"+sql);
+			st.executeUpdate(sql);
+			
 			
 			
 		} catch (SQLException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			ErrorHandle(e);
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			ErrorHandle(e);
 		}finally{
 			try {
 				if(st!=null) st.close();
-				if(conn!=null) conn.close();
+				if(conn3!=null) conn3.close();
 			} catch (SQLException e) {	}
 		}
 		
-		String subject = "實名制Report",mailReceiver=props.getProperty("CRM.recevier"),mailContent="";
+		String subject = "實名制Report",mailReceiver=props.getProperty("CRM.recevier");
 		if(testMode || mailReceiver == null || "".equals(mailReceiver)){
 			mailReceiver = props.getProperty("default.recevier");
 			//subject = "Joy default Report";
 		}
-		sendMail(subject,mailContent, "CRM_Report", mailReceiver,fileName);
-		
+		//sendMail(subject,mailContent, "CRM_Report", mailReceiver,fileName);
+		sendMailwithAuthenticator(subject,mailContent, "CRM_Report", mailReceiver,fileName);
 	}
 	
 	public static Workbook createExcel(List<Map<String,String>> head,List<Map<String,Object>> data,String type) throws IOException{
@@ -347,7 +476,9 @@ public class DailyReport implements Runnable{
 		
 		return wb;
 	}
-	
+	public static void ErrorHandle(Exception e){
+		ErrorHandle(null,e);
+	}
 	public static void ErrorHandle(String cont){
 		ErrorHandle(cont,null);
 	}
@@ -358,7 +489,7 @@ public class DailyReport implements Runnable{
 	 * @param data Map<col,value>
 	 * @return
 	 */
-	public boolean createSheetFile(String fileName,List<Map<String,String>> head,List<Map<String,Object>> data){
+	public boolean createSheetFile(String fileName,List<Map<String,String>> head,List<Map<String,Object>> data,double total){
 		
 		boolean result = false;
 		if(fileName == null){
@@ -405,6 +536,16 @@ public class DailyReport implements Runnable{
 				}
 			}
 			
+			if(total!=0){
+				//20161201 增加總量
+				row = sheet.createRow(rowN++);
+				row.createCell(1).setCellValue("total");
+				row.createCell(2).setCellValue(total);
+				row.createCell(3).setCellValue("MB");
+			}
+			
+			
+			
 			try {
 				File f = new File(fileName);
 				FileOutputStream os = new FileOutputStream(f);
@@ -426,6 +567,9 @@ public class DailyReport implements Runnable{
 	}
 
 	public void joyReport() throws Exception{
+		
+		//sendMailwithAuthenticator("JoyTest","TestMail", "Joy_Report", props.getProperty("default.recevier"),null);
+		
 		String imsiStart = props.getProperty("IMSI.start");
 		String imsiEnd = props.getProperty("IMSI.end");
 		
@@ -436,18 +580,37 @@ public class DailyReport implements Runnable{
 		c.set(Calendar.DAY_OF_YEAR, c.get(Calendar.DAY_OF_YEAR)-1);
 		String today = sdf2.format(c.getTime());
 		
-		String sql = "SELECT IMSI, MIN(SUBSTR(CALLTIME,1,10)) START_DATE, SUM(DATAVOLUME)/1024/1024 VOLUME_MB "
-				+ "FROM HUR_DATA_USAGE "
-				+ "WHERE IMSI>'"+imsiStart+"' AND IMSI <='"+imsiEnd+"' "
-				+ "AND SUBSTR(CALLTIME,1,10)<='"+today+"' "
-				+ "GROUP BY IMSI ";
+		String sql = "";
 		Statement st = null;
 		ResultSet rs = null;
+		double total = 0;
 		try {
 			String csvContent = "IMSI, START_DATE, VOLUME_MB";
 			//String csvName = "Joy-TWdata"+today.replace("/", "")+".csv";
 			String csvName = "Joy-TWdata"+today.replace("/", "")+".xls";
+			
 			st = conn.createStatement();
+			//20161201 新增ICCID資料
+			Map<String,String> iccidMap = new HashMap<String,String>();
+			sql = "select serviceid,imsi,iccid from imsi A where IMSI>'"+imsiStart+"' AND IMSI <='"+imsiEnd+"' ";
+					//+ "serviceid in (select serviceid from service where priceplanid = 167) ";
+			logger.info("Execute SQL : "+sql);
+			rs = st.executeQuery(sql);
+			
+			while(rs.next()){
+				iccidMap.put(rs.getString("imsi"), rs.getString("iccid"));
+			}
+			
+			rs.close();
+			
+			sql = "SELECT IMSI, MIN(SUBSTR(CALLTIME,1,10)) START_DATE, SUM(DATAVOLUME)/1024/1024 VOLUME_MB "
+					+ "FROM HUR_DATA_USAGE "
+					+ "WHERE IMSI>'"+imsiStart+"' AND IMSI <='"+imsiEnd+"' "
+					+ "AND SUBSTR(CALLTIME,1,10)<='"+today+"' "
+					+ "GROUP BY IMSI "
+					+ "order by START_DATE DESC ";
+			
+			
 			logger.info("Execute SQL : "+sql);
 			rs = st.executeQuery(sql);
 			List<Map<String,Object>> data = new ArrayList<Map<String,Object>>();
@@ -458,20 +621,25 @@ public class DailyReport implements Runnable{
 					FormatDouble(Double.valueOf(rs.getString("VOLUME_MB")==null?"0":rs.getString("VOLUME_MB")), null);
 			
 				Map<String,Object> m = new HashMap<String,Object>();
-				m.put("IMSI", rs.getString("IMSI"));
+				String imsi = rs.getString("IMSI");
+				String iccid =  iccidMap.get(imsi);
+				double volume = Double.valueOf(rs.getString("VOLUME_MB")==null?"0":rs.getString("VOLUME_MB"));
+				m.put("IMSI", imsi);
 				m.put("START_DATE", rs.getString("START_DATE"));
-				m.put("VOLUME_MB", FormatDouble(Double.valueOf(rs.getString("VOLUME_MB")==null?"0":rs.getString("VOLUME_MB")), null));
+				m.put("VOLUME_MB", FormatDouble(volume, null));
+				m.put("ICCID",iccid);
 				data.add(m);
+				total+= volume;
 			}
 			//createFile(csvName,csvContent);
-			
 			
 			List<Map<String,String>> head = new ArrayList<Map<String,String>>();
 			head.add(mapSetting("IMSI","IMSI"));
 			head.add(mapSetting("START_DATE","START_DATE"));
 			head.add(mapSetting("VOLUME_MB","VOLUME_MB"));
-			
-			createSheetFile(csvName,head,data);
+			head.add(mapSetting("ICCID","ICCID"));
+		
+			createSheetFile(csvName,head,data,total);
 			String mailReceiver = props.getProperty("Joy.recevier");
 			String subject = "Joy daily report-"+today.replace("/", "");
 			if(testMode || mailReceiver == null || "".equals(mailReceiver)){
@@ -486,7 +654,8 @@ public class DailyReport implements Runnable{
 					+ "\n"
 					+ "Sim2travel Inc.";
 			
-			sendMail(subject,mailContent, "Joy_Report", mailReceiver,csvName);
+			//sendMail(subject,mailContent, "Joy_Report", mailReceiver,csvName);
+			sendMailwithAuthenticator(subject,mailContent, "Joy_Report", mailReceiver,csvName);
 		} finally {
 			try {
 				if (rs != null)
@@ -765,9 +934,10 @@ public static String nvl(Object msg,String s){
 	
 	static String errorMsg;
 	public static void ErrorHandle(String cont,Exception e){
+		if(cont==null){
+			cont="";
+		}
 		if(e!=null){
-			logger.error(cont, e);
-			
 			StringWriter s = new StringWriter();
 			e.printStackTrace(new PrintWriter(s));
 			//send mail
@@ -776,8 +946,8 @@ public static String nvl(Object msg,String s){
 			logger.error(cont);
 			errorMsg="";
 		}
-		
-		sendErrorMail(cont);
+		logger.error(cont+"\n"+errorMsg);
+		sendErrorMail(cont+"\n"+errorMsg);
 	}
 	
 	
@@ -888,5 +1058,53 @@ public static String nvl(Object msg,String s){
 		} catch (InterruptedException e) {
 		}
 	}
+	
+	public void sendMailwithAuthenticator(String subject, String content,	String sender, String receiver,String fileName) throws AddressException, MessagingException, IOException {
+
+		Session session = javax.mail.Session.getInstance(props);
+
+		Message message = new MimeMessage(session);
+		//message.setHeader("Disposition-Notification-To", "ranger.kao@sim2travel.com");//回條參數
+		message.setFrom(new InternetAddress(sender));
+		message.setRecipients(Message.RecipientType.TO,	InternetAddress.parse(receiver));
+		message.setSubject(subject);
+		
+		if(fileName!=null ){
+			BodyPart messageBodyPart = new MimeBodyPart();
+			Multipart multipart = new MimeMultipart();
+			
+			messageBodyPart.setText(content);
+			multipart.addBodyPart(messageBodyPart);
+			
+			
+			/*MimeBodyPart  filepart = new MimeBodyPart ();
+			filepart.attachFile(fileName);
+			filepart.setFileName(fileName);*/
+			BodyPart filePart = new MimeBodyPart();
+			DataSource source = new FileDataSource(fileName);
+			filePart.setDataHandler(new DataHandler(source));
+			filePart.setFileName(fileName);	
+			
+			
+			multipart.addBodyPart(filePart);
+			
+			message.setContent(multipart);
+			//message.setText(content);
+		}else{
+			message.setText(content);
+		}
+		
+		
+		String ports = props.getProperty("mail.smtp.port").trim();
+		int port = Integer.parseInt(ports);
+		Transport transport = session.getTransport(props.getProperty("mail.smtp.protocol"));
+		transport.connect(props.getProperty("mail.smtp.host").trim(), 
+				port, 
+				props.getProperty("mail.smtp.username").trim(), 
+				props.getProperty("mail.smtp.password").trim());
+	    transport.sendMessage(message, message.getAllRecipients());
+	    System.out.println("Send mail finished.");
+		
+	}	
 
 }
