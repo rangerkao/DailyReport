@@ -6,6 +6,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
@@ -45,6 +46,8 @@ import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
 
+import org.apache.commons.net.ftp.FTPClient;
+import org.apache.commons.net.ftp.FTPReply;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 import org.apache.poi.hssf.usermodel.HSSFCell;
@@ -69,6 +72,7 @@ public class DailyReport implements Runnable{
 	static Connection conn,conn2,conn3;
 	static SimpleDateFormat sdf = new SimpleDateFormat("HH:mm");
 	static SimpleDateFormat sdf2 = new SimpleDateFormat("yyyy/MM/dd");
+	static SimpleDateFormat sdf3 = new SimpleDateFormat("yyyyMMdd");
 	
 	String home_dir;
 	DailyReport() throws FileNotFoundException, IOException{
@@ -87,25 +91,30 @@ public class DailyReport implements Runnable{
 				while(!exit){
 					String now = sdf.format(new Date());
 					logger.info(now+" program running...");
-					if(now.equals(props.getProperty("Joy.StartTime"))||testMode){
+					if(now.equals(props.getProperty("Joy.StartTime"))){
 						JoyReportSend = true;
 					}
-					if(now.equals(props.getProperty("US.StartTime"))||testMode){
-						USReportSend = true;
+					if(now.equals(props.getProperty("US.StartTime"))){
+						//20170220 stop
+						//USReportSend = true;
 					}
 					System.out.println("watcherCRM");
-					if(now.equals(props.getProperty("CRM.StartTime"))||testMode){
-						
+					if(now.equals(props.getProperty("CRM.StartTime"))){
 						Calendar cal = Calendar.getInstance();
 						int week = cal.get(Calendar.DAY_OF_WEEK);
-						
 						if(2<=week && week<=6 ){
 							CRMReportSend = true;
 						}
 					}
+					//20170216 add
+					if(now.equals(props.getProperty("SMS.StartTime"))){
+						SMSReportSend = true;
+					}
 					
-					
-					if(testMode) return;
+					if(testMode){ 
+						
+						return;
+					}
 					try {
 						Thread.sleep(1000*60);
 					} catch (InterruptedException e) {
@@ -124,12 +133,18 @@ public class DailyReport implements Runnable{
 	static boolean JoyReportSend = false;
 	static boolean USReportSend = false;
 	static boolean CRMReportSend = false;
+	static boolean SMSReportSend = false;
 	
 	@Override
 	public void run(){
 		while(!exit){
+
+			try {
+				Thread.sleep(10*1000);
+			} catch (InterruptedException e) {}
+			
 			logger.info(" program2 running...");
-			if(JoyReportSend||testMode){
+			if(JoyReportSend){
 				logger.info("joyReport starting...");
 				try {
 					connectDB();
@@ -146,11 +161,11 @@ public class DailyReport implements Runnable{
 				logger.info("joyReport end...");
 			}
 
-			if(USReportSend||testMode){
+			if(USReportSend){
 				logger.info("US Report starting...");
 				try {
 					connectDB();
-					//sendVolumeReport();
+					sendVolumeReport();
 					USReportSend = false;
 				} catch (Exception e) {
 					ErrorHandle("Can't send US Report!",e);
@@ -162,11 +177,11 @@ public class DailyReport implements Runnable{
 				}
 				logger.info("US Report end...");
 			}
-			if(CRMReportSend||testMode){
+			if(CRMReportSend){
 				logger.info("CRM Report starting...");
 				try {
 					connectDB();
-					//sendCRMReport();
+					sendCRMReport();
 					CRMReportSend = false;
 				} catch (Exception e) {
 					ErrorHandle("Can't send CRM Report!",e);
@@ -179,6 +194,23 @@ public class DailyReport implements Runnable{
 				logger.info("CRM Report end...");
 			}
 			
+			if(SMSReportSend){
+				logger.info("SMS Report starting...");
+				try {
+					connectNobillDB();
+					sendSMSReport();
+					SMSReportSend = false;
+				} catch (Exception e) {
+					ErrorHandle("Can't send SMS Report!",e);
+				}finally{
+					try {
+						if(conn!=null) conn.close();
+					} catch (SQLException e) {
+					}
+				}
+				logger.info("SMS Report end...");
+			}
+			
 			if(testMode) return;
 			try {
 				Thread.sleep(1000*60);
@@ -187,6 +219,162 @@ public class DailyReport implements Runnable{
 		}
 	}
 	
+	
+	public void sendSMSReport() throws Exception{
+		//取得前一天的日期
+		String dateS = sdf3.format(new Date(new Date().getTime()-24*60*60*1000));
+		String fileName = "SoftleaderOK"+dateS+".xlsx";
+		List<Map<String,String>> head = new ArrayList<Map<String,String>>();
+		List<Map<String,Object>> data = new ArrayList<Map<String,Object>>();
+		
+		Map<String,String> m = null;
+		
+		m = new HashMap<String,String>();
+		m.put("name", "Time");
+		m.put("col", "time");
+		head.add(m);
+		
+		m = new HashMap<String,String>();
+		m.put("name", "Destination");
+		m.put("col", "dest");
+		head.add(m);
+		
+		m= new HashMap<String,String>();
+		m.put("name", "Originator/Recipient");
+		m.put("col", "number");
+		head.add(m);
+
+		m = new HashMap<String,String>();
+		m.put("name", "Source");
+		m.put("col", "source");
+		head.add(m);
+		
+		m= new HashMap<String,String>();
+		m.put("name", "Type");
+		m.put("col", "type");
+		head.add(m);
+		
+		m= new HashMap<String,String>();
+		m.put("name", "State");
+		m.put("col", "state");
+		head.add(m);
+		
+		String sql = "SELECT TO_CHAR(TIMESTAMP,'yyyy-mm-dd hh24:mi:ss.ff3') TIME,  "
+				+ "			 destaddrvalue DEST,  "
+				+ "			 origorrecipaddrvalue NUM,  "
+				+ "			 sourcename SOURCE,   "
+				+ "			DECODE(TYPE,0,'Submit',1,'Status report') TYPE, "
+				+ "			DECODE(state,0,'Initial',    1,'Enroute',     2,'Delivered',     3,'Expired',     4,'Deleted',     5,'Undeliverable',     "
+				+ "									6,'Accepted',     7,'Unknown',     8,'Rejected',     9,'Delivered direct') STATE "
+				+ "FROM nobill.smcdr "
+				+ "WHERE sourcename='SoftLeader-in'   AND TO_CHAR(TIMESTAMP,'yyyymmdd') = '"+dateS+"' AND state in (2,9) "
+				+ "ORDER BY TIMESTAMP ";
+		
+		Statement st = conn.createStatement();
+		logger.info("Execute SQL:"+sql);
+		ResultSet rs = st.executeQuery(sql);
+		int i = 0;
+		while(rs.next()){
+			Map<String,Object> md = new HashMap<String,Object>();
+			md.put("time", rs.getString("TIME"));
+			md.put("dest", rs.getString("DEST"));
+			md.put("number", rs.getString("NUM"));
+			md.put("source", rs.getString("SOURCE"));
+			md.put("type", rs.getString("TYPE"));
+			md.put("state", rs.getString("STATE"));
+			data.add(md);
+			i++;
+		}
+		
+		logger.info("Create File "+fileName);
+		Workbook wb = createExcel(head,data,"xlsx");
+		File f = new File(fileName);
+		FileOutputStream fo = new FileOutputStream(f);
+		wb.write(fo);
+		fo.close();
+		logger.info("Create File End...");
+		
+		FTPClient ftp = null;
+		
+		try {
+			
+			if(testMode)
+				ftp = connectFTP(props.getProperty("test.FTP.host"),props.getProperty("test.FTP.username"),props.getProperty("test.FTP.password"),props.getProperty("test.FTP.dest"));
+			else
+				ftp = connectFTP(props.getProperty("FTP.host"),props.getProperty("FTP.username"),props.getProperty("FTP.password"),props.getProperty("FTP.dest"));
+			UpdatToFTP(ftp,fileName,fileName);
+		} finally {
+			if(ftp!=null) ftp.disconnect();
+		}		
+		
+		String subject = "SoftLeader簡訊發送結果"+dateS,mailReceiver=props.getProperty("SMS.recevier");
+		String mailContent = "Softleader 簡訊發送成功筆數為 "+i+" 筆";
+		if(testMode || mailReceiver == null || "".equals(mailReceiver)){
+			mailReceiver = props.getProperty("default.recevier");
+			subject = "test report";
+		}
+		sendMail(subject, mailContent, "SoftLeader_Report", mailReceiver);
+		
+	}
+	
+	public FTPClient connectFTP(String host,String username,String password,String dest) throws Exception{
+		
+
+		FTPClient ftp = new FTPClient();
+		
+		logger.info("connect to FTP : "+host);
+		//建立連線
+		ftp.connect(host);
+ 
+		//登入
+		if (!ftp.login(username, password)) {
+			ftp.logout();
+			throw new Exception("FTP登入失敗");
+		}
+		//取得回應碼
+		int reply = ftp.getReplyCode();
+
+		System.out.println("reply:"+reply);
+		//登入狀態
+		if (!FTPReply.isPositiveCompletion(reply)) {
+			ftp.disconnect();
+			throw new Exception("FTP無回應");
+		}           
+  
+		//FTP改為被動模式
+		ftp.enterLocalPassiveMode();
+   
+		//改路徑
+		ftp.changeWorkingDirectory(dest);   
+   
+		logger.info("connect Ftp Success!");
+		
+		return ftp;
+	}
+
+	public void UpdatToFTP(FTPClient ftp,String localFileName,String destFileName) throws IOException{
+
+		logger.info("Updating...");
+		FileInputStream fis = null;
+		 try {
+			fis =  new FileInputStream(localFileName); 
+			 
+			ftp.setBufferSize(1024);  
+			//ftp.setControlEncoding("big5");
+			// 设置文件类型（二进制）  
+			ftp.setFileType(FTPClient.BINARY_FILE_TYPE);  
+
+			
+			if(ftp.storeFile(destFileName, fis)){
+				logger.info("Update Success!");
+			}else{
+				logger.info("Update fail!");
+			}
+		}finally{
+			logger.info("close FTP...");
+			if(fis!=null) fis.close();
+		}
+	}
 	
 	public  void sendCRMReport() throws AddressException, MessagingException, IOException{
 		
@@ -237,7 +425,7 @@ public class DailyReport implements Runnable{
 		
 		String mailContent = "實名制Report:\n\n";
 		
-		Set<String> canceledServiceid = new HashSet<String>();
+		//Set<String> canceledServiceid = new HashSet<String>();
 		Statement st = null;
 		Statement st2 = null;
 		ResultSet rs = null;
@@ -246,9 +434,9 @@ public class DailyReport implements Runnable{
 			conn3 = DriverManager.getConnection("jdbc:mysql://192.168.10.199:3306/CRM_DB?characterEncoding=utf8", "crmuser", "crm");
 			st = conn3.createStatement();
 			
-			String sql = "select serviceid,name,id,type,chinaMsisdn,chtMsisdn,remark "
+			String sql = "select serviceid,name,id,type,vln,msisdn,remark "
 					+ "from CRM_DB.CRM_NAME_VERIFIED "
-					+ "where send_date is null or send_date ='' ";
+					+ "where vln like '86%' and (send_date is null or send_date ='')  ";
 			
 			logger.info("Execute SQL:"+sql);
 			rs =st.executeQuery(sql);
@@ -259,9 +447,9 @@ public class DailyReport implements Runnable{
 				m2.put("name", rs.getString("name"));
 				m2.put("id", rs.getString("id"));
 				m2.put("type", rs.getString("type"));
-				m2.put("chinaMsisdn", rs.getString("chinaMsisdn"));
+				m2.put("chinaMsisdn", rs.getString("vln"));
 				m2.put("location", "台湾");
-				m2.put("chtMsisdn", rs.getString("chtMsisdn"));
+				m2.put("chtMsisdn", rs.getString("msisdn"));
 				m2.put("remark", rs.getString("remark"));
 				data.add(m2);
 			}
@@ -277,8 +465,8 @@ public class DailyReport implements Runnable{
 			logger.info("Create File End...");
 			
 			//將已退租的更改為歷史
-			
-			sql = "select serviceid from service A where to_char(A.datecanceled,'yyyyMMdd') <= '"+sDate+"' "
+			//20170220 del
+		/*	sql = "select serviceid from service A where to_char(A.datecanceled,'yyyyMMdd') <= '"+sDate+"' "
 					+ "and to_char(A.datecanceled+3,'yyyyMMdd') >='"+sDate+"' ";
 			st2 = conn.createStatement();
 			logger.info("Execute SQL:"+sql);
@@ -286,10 +474,10 @@ public class DailyReport implements Runnable{
 			
 			while(rs.next()){
 				canceledServiceid.add(rs.getString("serviceid"));
-			}
+			}*/
 			
-			String serviceidInQuery = "";
-			Iterator<String> it = canceledServiceid.iterator();
+			//String serviceidInQuery = "";
+			/*Iterator<String> it = canceledServiceid.iterator();
 			for(int i = 1 ;it.hasNext();i++){
 				serviceidInQuery+= it.next();
 				if(i>=1000){
@@ -307,21 +495,21 @@ public class DailyReport implements Runnable{
 				logger.info("Execute SQL:"+sql);
 				st.executeUpdate(sql);
 				serviceidInQuery = "";
-			}
+			}*/
 			
 			mailContent += "重複驗證的中國號:"+"\n";
 			mailContent += "\t"+"中國號"+"\t"+"數量"+"\n";
 			//20161129 驗證已import內容
 			//重複的中國號
-			sql = "select chinaMsisdn,count(1) CD from CRM_DB.CRM_NAME_VERIFIED where status = 1 group by chinaMsisdn having count(1)>1 ";
+			sql = "select vln,count(1) CD from CRM_DB.CRM_NAME_VERIFIED where status = 1 group by vln having count(1)>1 ";
 			logger.info("Execute SQL:"+sql);
 			rs =st.executeQuery(sql);
 			
 			while(rs.next()){
-				mailContent += "\t"+rs.getString("chinaMsisdn")+"\t"+rs.getString("CD")+"\n";
+				mailContent += "\t"+rs.getString("vln")+"\t"+rs.getString("CD")+"\n";
 			}
 			
-			mailContent += "\n";
+			/*mailContent += "\n";
 			mailContent += "重複的中華號資料:"+"\n";
 			mailContent += "\t"+"中華號"+"\t"+"數量"+"\n";
 			//重複的中華號
@@ -331,7 +519,7 @@ public class DailyReport implements Runnable{
 			
 			while(rs.next()){
 				mailContent += "\t"+rs.getString("chtMsisdn")+"\t"+rs.getString("CD")+"\n";
-			}
+			}*/
 			
 			mailContent += "\n";
 			mailContent += "一證件認證超過5個號碼:"+"\n";
@@ -350,7 +538,7 @@ public class DailyReport implements Runnable{
 			mailContent += "\t"+"證號"+"\t"+"名稱1"+"\t"+"名稱2"+"\n";
 			//同名不同證號
 			sql = "select distinct A.name AN,A.id AD,B.name BN from CRM_DB.CRM_NAME_VERIFIED A inner join CRM_DB.CRM_NAME_VERIFIED B on A.id = B.id "
-					+ "where A.status=1 and B.status=1 and (A.name<>B.name or A.type<>B.type) " ;
+					+ "where A.status=1 and B.status=1 and (A.name<>B.name or A.type<>B.type) order by A.id " ;
 			logger.info("Execute SQL:"+sql);
 			rs =st.executeQuery(sql);
 			
@@ -361,7 +549,7 @@ public class DailyReport implements Runnable{
 			
 			//更新SendDate
 			sql  = "update CRM_DB.CRM_NAME_VERIFIED set send_date = '"+new SimpleDateFormat("yyyy/MM/dd").format(now)+"' "
-					+ "where send_date is null or send_date ='' ";
+					+ "where vln like '86%' and (send_date is null or send_date ='') ";
 			logger.info("Execute SQL:"+sql);
 			st.executeUpdate(sql);
 			
@@ -698,6 +886,20 @@ public class DailyReport implements Runnable{
 		conn=connDB(props.getProperty("Oracle.DriverClass"), url, 
 				props.getProperty("Oracle.UserName"), 
 				props.getProperty("Oracle.PassWord")
+				);
+		logger.info("Connect to "+url);
+	}
+	
+	public void connectNobillDB() throws ClassNotFoundException, SQLException{
+		String url=props.getProperty("nbill.URL")
+				.replace("{{Host}}", props.getProperty("nbill.Host"))
+				.replace("{{Port}}", props.getProperty("nbill.Port"))
+				.replace("{{ServiceName}}", (props.getProperty("nbill.ServiceName")!=null?props.getProperty("nbill.ServiceName"):""))
+				.replace("{{SID}}", (props.getProperty("nbill.SID")!=null?props.getProperty("nbill.SID"):""));
+		
+		conn=connDB(props.getProperty("nbill.DriverClass"), url, 
+				props.getProperty("nbill.UserName"), 
+				props.getProperty("nbill.PassWord")
 				);
 		logger.info("Connect to "+url);
 	}
