@@ -74,6 +74,14 @@ public class DailyReport implements Runnable{
 	static SimpleDateFormat sdf2 = new SimpleDateFormat("yyyy/MM/dd");
 	static SimpleDateFormat sdf3 = new SimpleDateFormat("yyyyMMdd");
 	
+	static boolean exit = false;
+	static boolean testMode = true;
+	static boolean JoyReportSend = false;
+	static boolean USReportSend = false;
+	static boolean CRMReportSend = false;
+	static boolean SMSReportSend = false;
+	static boolean AnnexReportSend = false;
+	
 	String home_dir;
 	DailyReport() throws FileNotFoundException, IOException{
 		home_dir = "Log4j.properties";
@@ -81,6 +89,12 @@ public class DailyReport implements Runnable{
 		logger = Logger.getLogger(DailyReport.class);
 		testMode = "TRUE".equals(props.getProperty("testMode").toUpperCase())?true:false;
 		logger.info("Test Mod : "+testMode);
+		//20170816 add
+		JoyReportSend = "TRUE".equals(props.getProperty("Joy.preDo").toUpperCase())?true:false;
+		USReportSend = "TRUE".equals(props.getProperty("US.preDo").toUpperCase())?true:false;
+		CRMReportSend = "TRUE".equals(props.getProperty("CRM.preDo").toUpperCase())?true:false;
+		SMSReportSend = "TRUE".equals(props.getProperty("SMS.preDo").toUpperCase())?true:false;
+		AnnexReportSend = "TRUE".equals(props.getProperty("Annex.preDo").toUpperCase())?true:false;
 	}
 
 	public static void main(String[] args) throws FileNotFoundException, IOException {
@@ -96,9 +110,9 @@ public class DailyReport implements Runnable{
 					}
 					if(now.equals(props.getProperty("US.StartTime"))){
 						//20170220 stop
-						//USReportSend = true;
+						USReportSend = true;
 					}
-					System.out.println("watcherCRM");
+					System.out.println("watcherCRM "+now);
 					if(now.equals(props.getProperty("CRM.StartTime"))){
 						Calendar cal = Calendar.getInstance();
 						int week = cal.get(Calendar.DAY_OF_WEEK);
@@ -110,6 +124,11 @@ public class DailyReport implements Runnable{
 					if(now.equals(props.getProperty("SMS.StartTime"))){
 						SMSReportSend = true;
 					}
+					//20170703 add
+					if(now.equals(props.getProperty("Annex.StartTime"))){
+						AnnexReportSend = true;
+					}
+					
 					
 					if(testMode){ 
 						
@@ -128,12 +147,7 @@ public class DailyReport implements Runnable{
 		
 	}
 	
-	static boolean exit = false;
-	static boolean testMode = true;
-	static boolean JoyReportSend = false;
-	static boolean USReportSend = false;
-	static boolean CRMReportSend = false;
-	static boolean SMSReportSend = false;
+
 	
 	@Override
 	public void run(){
@@ -211,6 +225,24 @@ public class DailyReport implements Runnable{
 				logger.info("SMS Report end...");
 			}
 			
+			if(AnnexReportSend){
+				logger.info("SMS Annex starting...");
+				try {
+					connectDB();
+					sendAnnexReport();
+					AnnexReportSend = false;
+				} catch (Exception e) {
+					ErrorHandle("Can't send SMS Report!",e);
+				}finally{
+					try {
+						if(conn!=null) conn.close();
+					} catch (SQLException e) {
+					}
+				}
+				logger.info("SMS Report end...");
+			}
+			
+			
 			if(testMode) return;
 			try {
 				Thread.sleep(1000*60);
@@ -226,6 +258,24 @@ public class DailyReport implements Runnable{
 		String fileName = "SoftleaderOK"+dateS+".xlsx";
 		List<Map<String,String>> head = new ArrayList<Map<String,String>>();
 		List<Map<String,Object>> data = new ArrayList<Map<String,Object>>();
+List<Map<String,Integer>> size = new ArrayList<Map<String,Integer>>();
+		
+		
+		Map<String,Integer> mz = null;
+		mz = new HashMap<String,Integer>();
+		mz.put("number", 0);
+		mz.put("width",20);
+		size.add(mz);
+		
+		mz = new HashMap<String,Integer>();
+		mz.put("number", 1);
+		mz.put("width",15);
+		size.add(mz);
+		
+		mz = new HashMap<String,Integer>();
+		mz.put("number", 2);
+		mz.put("width",20);
+		size.add(mz);
 		
 		Map<String,String> m = null;
 		
@@ -287,7 +337,7 @@ public class DailyReport implements Runnable{
 		}
 		
 		logger.info("Create File "+fileName);
-		Workbook wb = createExcel(head,data,"xlsx");
+		Workbook wb = createExcel(head,data,"xlsx",size);
 		File f = new File(fileName);
 		FileOutputStream fo = new FileOutputStream(f);
 		wb.write(fo);
@@ -383,6 +433,24 @@ public class DailyReport implements Runnable{
 		String fileName = "nameBinding_"+sDate+".xlsx";
 		List<Map<String,String>> head = new ArrayList<Map<String,String>>();
 		List<Map<String,Object>> data = new ArrayList<Map<String,Object>>();
+		List<Map<String,Integer>> size = new ArrayList<Map<String,Integer>>();
+		
+		
+		Map<String,Integer> mz = null;
+		mz = new HashMap<String,Integer>();
+		mz.put("number", 0);
+		mz.put("width",20);
+		size.add(mz);
+		
+		mz = new HashMap<String,Integer>();
+		mz.put("number", 1);
+		mz.put("width",15);
+		size.add(mz);
+		
+		mz = new HashMap<String,Integer>();
+		mz.put("number", 2);
+		mz.put("width",20);
+		size.add(mz);
 		
 		
 		Map<String,String> m = null;
@@ -427,11 +495,10 @@ public class DailyReport implements Runnable{
 		
 		//Set<String> canceledServiceid = new HashSet<String>();
 		Statement st = null;
-		Statement st2 = null;
 		ResultSet rs = null;
 		try {
 
-			conn3 = DriverManager.getConnection("jdbc:mysql://192.168.10.199:3306/CRM_DB?characterEncoding=utf8", "crmuser", "crm");
+			conn3 = DriverManager.getConnection("jdbc:mysql://10.42.1.199:3306/CRM_DB?characterEncoding=utf8", "crmuser", "crm");
 			st = conn3.createStatement();
 			
 			String sql = "select serviceid,name,id,type,vln,msisdn,remark "
@@ -454,9 +521,8 @@ public class DailyReport implements Runnable{
 				data.add(m2);
 			}
 			rs.close();
-			
 			logger.info("Create File "+fileName);
-			Workbook wb = createExcel(head,data,"xlsx");
+			Workbook wb = createExcel(head,data,"xlsx",size);
 			File f = new File(fileName);
 			FileOutputStream fo = new FileOutputStream(f);
 			wb.write(fo);
@@ -584,6 +650,11 @@ public class DailyReport implements Runnable{
 	}
 	
 	public static Workbook createExcel(List<Map<String,String>> head,List<Map<String,Object>> data,String type) throws IOException{
+		
+		return createExcel(head, data,type,null) ;
+		
+	}
+	public static Workbook createExcel(List<Map<String,String>> head,List<Map<String,Object>> data,String type,List<Map<String,Integer>> size) throws IOException{
 		Workbook wb = null;
 		int rowN = 0;
 		int sheetN = 0;
@@ -591,9 +662,15 @@ public class DailyReport implements Runnable{
 		if(type.matches("^xls$")){
 			wb = new HSSFWorkbook();  
 			HSSFSheet sheet = (HSSFSheet) wb.createSheet("sheet"+sheetN++);  
-			sheet.setColumnWidth(0, 20*256);
+			if(size!=null){
+				for(Map<String,Integer> m : size){
+					sheet.setColumnWidth( m.get("number"),m.get("width")*256);
+				}
+			}
+			
+			/*sheet.setColumnWidth(0, 20*256);
 			sheet.setColumnWidth(1, 15*256);
-			sheet.setColumnWidth(2, 20*256);
+			sheet.setColumnWidth(2, 20*256);*/
 			HSSFRow row = sheet.createRow(rowN++);
 			HSSFCell cell ;
 			//欄位樣式
@@ -631,9 +708,11 @@ public class DailyReport implements Runnable{
 		if(type.matches("^xlsx$")){
 			wb = new XSSFWorkbook();  
 			XSSFSheet sheet = (XSSFSheet) wb.createSheet("sheet"+sheetN++);  
-			sheet.setColumnWidth(0, 20*256);
-			sheet.setColumnWidth(1, 15*256);
-			sheet.setColumnWidth(2, 20*256);
+			if(size!=null){
+				for(Map<String,Integer> m : size){
+					sheet.setColumnWidth(m.get("number"),m.get("width")*256);
+				}
+			}
 			XSSFRow row = sheet.createRow(rowN++);
 			XSSFCell cell ;
 			//欄位樣式
@@ -766,7 +845,7 @@ public class DailyReport implements Runnable{
 			
 		Calendar c = Calendar.getInstance();
 		c.set(Calendar.DAY_OF_YEAR, c.get(Calendar.DAY_OF_YEAR)-1);
-		String today = sdf2.format(c.getTime());
+		String today = sdf3.format(c.getTime());
 		
 		String sql = "";
 		Statement st = null;
@@ -791,10 +870,54 @@ public class DailyReport implements Runnable{
 			
 			rs.close();
 			
-			sql = "SELECT IMSI, MIN(SUBSTR(CALLTIME,1,10)) START_DATE, SUM(DATAVOLUME)/1024/1024 VOLUME_MB "
+			/*sql = "SELECT IMSI, MIN(SUBSTR(CALLTIME,1,10)) START_DATE, SUM(DATAVOLUME)/1024/1024 VOLUME_MB "
 					+ "FROM HUR_DATA_USAGE "
 					+ "WHERE IMSI>'"+imsiStart+"' AND IMSI <='"+imsiEnd+"' "
 					+ "AND SUBSTR(CALLTIME,1,10)<='"+today+"' "
+					+ "GROUP BY IMSI "
+					+ "order by START_DATE DESC ";*/
+			//因Hur_data_usage可能搬移資料，改以日累計作為統計來源
+			sql = "SELECT A.IMSI, MIN(B.DAY) START_DATE, SUM(B.VOLUME)/1024/1024 VOLUME_MB "
+					+ "from ("
+					+ "			SELECT A.serviceid , NEWIMSI IMSI "
+					+ "			from ( "
+					+ "						SELECT c.serviceid, c.servicecode, '' OldIMSI, a.fieldvalue NewIMSI, b.COMPLETEDATE, b.orderid, 'New' OrderType "
+					+ "						FROM NEWSERVICEORDERINFO a, serviceorder b, service c "
+					+ "						WHERE a.fieldid=3713 AND a.orderid=b.orderid "
+					+ "						AND b.serviceid=c.serviceid "
+					+ "						AND TO_CHAR(c.dateactivated,'yyyymmdd')>='20070205' "
+					+ "						AND TO_CHAR(b.completedate,'yyyymmdd')>='20070205' "
+					+ "						UNION ALL "
+					+ "						SELECT c.SERVICEID, C.servicecode, a.oldvalue OldIMSI, A.NEWVALUE imsi, A.COMPLETEDATE, b.orderid, 'Change' OrderType "
+					+ "						FROM SERVICEINFOCHANGEORDER A, SERVICEORDER B, SERVICE C "
+					+ "						WHERE A.FIELDID=3713 AND A.ORDERID=B.ORDERID "
+					+ "						AND B.SERVICEID=C.SERVICEID "
+					+ "						AND TO_CHAR(c.dateactivated,'yyyymmdd')>='20070205' "
+					+ "						AND TO_CHAR(a.completedate,'yyyymmdd')>='20070205' "
+					+ "						AND a.oldvalue <> a.newvalue) A, "
+					+ "					("
+					+ "						SELECT SERVICEID,MAX(COMPLETEDATE) COMPLETEDATE "
+					+ "						FROM ( "
+					+ "									SELECT c.serviceid, c.servicecode, '' OldIMSI, a.fieldvalue NewIMSI, b.COMPLETEDATE, b.orderid, 'New' OrderType "
+					+ "									FROM NEWSERVICEORDERINFO a, serviceorder b, service c "
+					+ "									WHERE a.fieldid=3713 AND a.orderid=b.orderid "
+					+ "									AND b.serviceid=c.serviceid "
+					+ "									AND TO_CHAR(c.dateactivated,'yyyymmdd')>='20070205' "
+					+ "									AND TO_CHAR(b.completedate,'yyyymmdd')>='20070205' "
+					+ "									UNION ALL "
+					+ "									SELECT c.SERVICEID, C.servicecode, a.oldvalue OldIMSI, A.NEWVALUE imsi, A.COMPLETEDATE, b.orderid, 'Change' OrderType "
+					+ "									FROM SERVICEINFOCHANGEORDER A, SERVICEORDER B, SERVICE C "
+					+ "									WHERE A.FIELDID=3713 AND A.ORDERID=B.ORDERID "
+					+ "									AND B.SERVICEID=C.SERVICEID "
+					+ "									AND TO_CHAR(c.dateactivated,'yyyymmdd')>='20070205' "
+					+ "									AND TO_CHAR(a.completedate,'yyyymmdd')>='20070205' "
+					+ "									AND a.oldvalue <> a.newvalue )"
+					+ "						GROUP BY SERVICEID) B"
+					+ "			WHERE A.SERVICEID = B.SERVICEID AND A.COMPLETEDATE = B.COMPLETEDATE ) A  , "
+					+ "			HUR_CURRENT_DAY B "
+					+ "WHERE A.SERVICEID = B.SERVICEID "
+					+ "AND A.IMSI>'"+imsiStart+"' AND A.IMSI <='"+imsiEnd+"' "
+					+ "AND B.DAY >= '20161001' AND B.DAY<='"+today+"' "
 					+ "GROUP BY IMSI "
 					+ "order by START_DATE DESC ";
 			
@@ -918,24 +1041,261 @@ public class DailyReport implements Runnable{
 		PropertyConfigurator.configure(props);
 	}
 
-	public void sendVolumeReport(){
-		logger.info("sendVolumeReport...");
+	
+	/**
+	 * Annex Report
+	 * 
+	 * IMSI、Start date、Usage Date(使用日期)、Country、Volume(MB)小數2位、Price(USD)小數2位
+	 */
+	public void sendAnnexReport(){
+		logger.info("sendAnnexReport...");
+		
+		Date now = new Date();
+		String sDate = new SimpleDateFormat("yyyyMMdd").format(now);
+		
+		String fileName = "Annex_"+sDate+".xlsx";
+		List<Map<String,String>> head = new ArrayList<Map<String,String>>();
+		List<Map<String,Object>> data = new ArrayList<Map<String,Object>>();
+		List<Map<String,Integer>> size = new ArrayList<Map<String,Integer>>();
+		
+		
+		Map<String,Integer> mz = null;
+		
+		mz = new HashMap<String,Integer>();
+		mz.put("number", 0);
+		mz.put("width",25);
+		size.add(mz);
+		
+		mz = new HashMap<String,Integer>();
+		mz.put("number", 1);
+		mz.put("width",20);
+		size.add(mz);
+		
+		mz = new HashMap<String,Integer>();
+		mz.put("number", 2);
+		mz.put("width",15);
+		size.add(mz);
+		
+		mz = new HashMap<String,Integer>();
+		mz.put("number", 3);
+		mz.put("width",20);
+		size.add(mz);
+		
+		Map<String,String> m = null;
+		
+		m = new HashMap<String,String>();
+		m.put("name", "ICCID");
+		m.put("col", "iccid");
+		head.add(m);
+		
+		m = new HashMap<String,String>();
+		m.put("name", "IMSI");
+		m.put("col", "imsi");
+		head.add(m);
+		
+		m = new HashMap<String,String>();
+		m.put("name", "Start Date");
+		m.put("col", "sDate");
+		head.add(m);
+		
+		m= new HashMap<String,String>();
+		m.put("name", "Usage Date");
+		m.put("col", "uDate");
+		head.add(m);
+
+		m = new HashMap<String,String>();
+		m.put("name", "Country");
+		m.put("col", "country");
+		head.add(m);
+		
+		m= new HashMap<String,String>();
+		m.put("name", "Volume(MB)");
+		m.put("col", "volume");
+		head.add(m);
+		
+		m= new HashMap<String,String>();
+		m.put("name", "Price(USD)");
+		m.put("col", "price");
+		head.add(m);		
+		
 		Statement st = null;
 		ResultSet rs = null;
 		
-		Map<String,Map<String,Map<String,String>>> totalCount = new HashMap<String,Map<String,Map<String,String>>>();
+		try{
+			st = conn.createStatement();
+
+			String sql = "select A.IMSI,A.START_DATE,B.DAY,C.COUNTRY,round(B.VOLUME/1024/1024,2) VOLUME_MB,B.CHARGE PRICE,D.ICCID "
+					+ "from HUR_VOLUME_POCKET A,HUR_CURRENT_DAY B,HUR_MCCMNC C,IMSI D "
+					+ "where A.type = 2 and a.serviceid = B.serviceid and substr(B.MCCMNC,0,3) = substr(C.MCCMNC,0,3) and A.IMSI=D.IMSI ";
+			
+			logger.debug("SQL : "+sql);
+			rs = st.executeQuery(sql);
+			logger.info("Query end!");
+			
+			while(rs.next()){
+				Map<String,Object> md = new HashMap<String,Object>();
+				md.put("iccid", rs.getString("ICCID"));
+				md.put("imsi", rs.getString("IMSI"));
+				md.put("sDate", rs.getString("START_DATE"));
+				md.put("uDate", rs.getString("DAY"));
+				md.put("country", rs.getString("COUNTRY"));
+				md.put("volume", rs.getString("VOLUME_MB"));
+				md.put("price", rs.getString("PRICE"));
+				data.add(md);	
+			}
+			
+			logger.info("Create File "+fileName);
+			Workbook wb = createExcel(head,data,"xlsx",size);
+			File f = new File(fileName);
+			FileOutputStream fo = new FileOutputStream(f);
+			wb.write(fo);
+			fo.close();
+			logger.info("Create File End...");
+			
+			String subject = "AnnexReport",mailReceiver=props.getProperty("Annex.recevier");
+			if(testMode || mailReceiver == null || "".equals(mailReceiver)){
+				mailReceiver = props.getProperty("default.recevier");
+				//subject = "Joy default Report";
+			}
+			
+			String mailContent = "Annex Report at "+now;
+			//sendMail(subject,mailContent, "CRM_Report", mailReceiver,fileName);
+			sendMailwithAuthenticator(subject,mailContent, "Annex_Report", mailReceiver,fileName);
+			
+			
+		} catch (SQLException e) {
+			ErrorHandle("At set sendAnnexReport Got a SQLException", e);
+		} catch (IOException e) {
+			ErrorHandle("At set sendAnnexReport Got a IOException", e);
+		} catch (AddressException e) {
+			ErrorHandle("At set sendAnnexReport Got a AddressException", e);
+		} catch (MessagingException e) {
+			ErrorHandle("At set sendAnnexReport Got a MessagingException", e);
+		}finally{
+			try {
+				if(st!=null)
+					st.close();
+				
+				if(rs!=null)
+					rs.close();
+			} catch (SQLException e) {
+			}
+		}
+		
+		
+	}
+	
+	
+	
+	public void sendVolumeReport(){
+		logger.info("sendVolumeReport...");
+		
+		Date now = new Date();
+		String sDate = new SimpleDateFormat("yyyyMMdd").format(now);
+		
+		String fileName = "USPackage_"+sDate+".xlsx";
+		List<Map<String,String>> head = new ArrayList<Map<String,String>>();
+		List<Map<String,Object>> data = new ArrayList<Map<String,Object>>();
+		List<Map<String,Integer>> size = new ArrayList<Map<String,Integer>>();
+		
+		
+		Map<String,Integer> mz = null;
+		mz = new HashMap<String,Integer>();
+		mz.put("number", 0);
+		mz.put("width",15);
+		size.add(mz);
+		
+		mz = new HashMap<String,Integer>();
+		mz.put("number", 1);
+		mz.put("width",20);
+		size.add(mz);
+		
+		mz = new HashMap<String,Integer>();
+		mz.put("number", 2);
+		mz.put("width",20);
+		size.add(mz);
+		
+		mz = new HashMap<String,Integer>();
+		mz.put("number", 4);
+		mz.put("width",25);
+		size.add(mz);
+		
+		mz = new HashMap<String,Integer>();
+		mz.put("number", 5);
+		mz.put("width",25);
+		size.add(mz);
+		
+		mz = new HashMap<String,Integer>();
+		mz.put("number", 6);
+		mz.put("width",20);
+		size.add(mz);
+		
+		mz = new HashMap<String,Integer>();
+		mz.put("number", 7);
+		mz.put("width",15);
+		size.add(mz);
+		
+		Map<String,String> m = null;
+		
+		m = new HashMap<String,String>();
+		m.put("name", "Msisdn");
+		m.put("col", "msisdn");
+		head.add(m);
+		
+		m = new HashMap<String,String>();
+		m.put("name", "Package Start Date");
+		m.put("col", "psDate");
+		head.add(m);
+		
+		m= new HashMap<String,String>();
+		m.put("name", "Package End Date");
+		m.put("col", "peDate");
+		head.add(m);
+
+		m = new HashMap<String,String>();
+		m.put("name", "Alerted");
+		m.put("col", "alerted");
+		head.add(m);
+		
+		m= new HashMap<String,String>();
+		m.put("name", "Addon Service Start Date");
+		m.put("col", "asDate");
+		head.add(m);
+		
+		m= new HashMap<String,String>();
+		m.put("name", "Addon Service End Date");
+		m.put("col", "aeDate");
+		head.add(m);
+		
+		m= new HashMap<String,String>();
+		m.put("name", "In Period Volume(MB)");
+		m.put("col", "iVolume");
+		head.add(m);
+		
+		m= new HashMap<String,String>();
+		m.put("name", "In Period Days");
+		m.put("col", "iDays");
+		head.add(m);
+		
+		Statement st = null;
+		ResultSet rs = null;
+		
+		
 		
 		try{
 			st = conn.createStatement();
 			
 			
-			//統計每月有在美國使用總天數與總量，MO日期、CD天數、SU量
-			String sql=
-					"select A.SERVICEID,substr(A.day,0,6) MO,count(1) CD,sum(A.volume) SU "
+			
+			String sql= "";
+					
+			/*//統計每月有在美國使用總天數與總量，MO日期、CD天數、SU量
+			sql = "select A.SERVICEID,substr(A.day,0,6) MO,count(1) CD,sum(A.volume) SU "
 					+ "from HUR_CURRENT_DAY A "
 					+ "where A.MCCMNC like '310%' "
 					+ "group by A.Serviceid,substr(A.day,0,6)";
 			
+			Map<String,Map<String,Map<String,String>>> totalCount = new HashMap<String,Map<String,Map<String,String>>>();
 			
 			logger.debug("SQL : "+sql);
 			rs = st.executeQuery(sql);
@@ -956,7 +1316,7 @@ public class DailyReport implements Runnable{
 				
 				m1.put(month, m2);
 				totalCount.put(serviceid, m1);
-			}
+			}*/
 			
 			rs = null;
 			
@@ -986,95 +1346,49 @@ public class DailyReport implements Runnable{
 			
 			rs = null;
 			
-			
-			//建立report
-			String report = "";
-			report+="<html><head></head><body><table>";
-
-			String [] v = new String[]{
-					"中華門號",
-					"起始時間",
-					"結束時間",
-					//"Email",
-					"已警示",
-					"建立時間",
-					"取消時間",
-					"客戶姓名",
-					//"進線者姓名",
-					"手機型號",
-					"期間內流量(MB)",
-					"期間外流量(MB)",
-					"期間內使用天數",
-					"時間外使用天數",
-					};
-			report += pfString(v);
-			
 			sql=
-					"SELECT A.SERVICEID,A.PID,B.FOLLOWMENUMBER CHTMSISDN,A.SERVICEID,A.MCC,A.ALERTED,A.ID,A.CALLER_NAME,A.CUSTOMER_NAME,A.PHONE_TYPE,A.EMAIL,A.CANCEL_REASON, "
+					/*"SELECT A.SERVICEID,A.PID,B.FOLLOWMENUMBER CHTMSISDN,A.SERVICEID,A.MCC,A.ALERTED,A.ID,A.CALLER_NAME,A.CUSTOMER_NAME,A.PHONE_TYPE,A.EMAIL,A.CANCEL_REASON, "
 					+ "A.START_DATE,A.END_DATE,"
 					+ "TO_CHAR(A.CREATE_TIME,'yyyy/MM/dd hh24:mi:ss') CREATE_TIME,TO_CHAR(A.CANCEL_TIME,'yyyy/MM/dd hh24:mi:ss') CANCEL_TIME "
 					+ "from HUR_VOLUME_POCKET A,FOLLOWMEDATA B "
 					+ "WHERE A.SERVICEID = B.SERVICEID(+) AND A.TYPE=0 AND B.FOLLOWMENUMBER like '886%' "
-					+ "ORDER BY A.START_DATE DESC ";
+					+ "ORDER BY A.START_DATE DESC ";*/
+					
+					//20170704 new
+					"SELECT A.SERVICEID,A.PID,B.FOLLOWMENUMBER CHTMSISDN,A.SERVICEID,A.MCC,A.ALERTED,A.ID, A.TYPE,"
+					+ "A.START_DATE,A.END_DATE,C.STARTDATE CREATE_TIME,C.ENDDATE CANCEL_TIME,C.SERVICECODE "
+					+ "from HUR_VOLUME_POCKET A,FOLLOWMEDATA B ,ADDONSERVICE_N C "
+					+ "WHERE A.SERVICEID = B.SERVICEID(+) and a.serviceid = c.serviceid and C.SERVICECODE = 'SX003'  "
+					+ "AND A.TYPE=0 AND B.FOLLOWMENUMBER like '886%' "
+					+ "and A.START_DATE>=to_char(C.STARTDATE,'yyyyMMdd') "
+					+ "and ( C.ENDDATE is null or A.START_DATE<=to_char(C.ENDDATE,'yyyyMMdd')) "
+					+ "ORDER BY CREATE_TIME DESC ";
 			
 			logger.debug("SQL : "+sql);
 			rs = st.executeQuery(sql);
 			logger.info("Query end!");
 
 			while(rs.next()){
-				String serviceid = rs.getString("SERVICEID");
 				String pid = rs.getString("PID");
-				String id = convertString(rs.getString("ID"),"ISO-8859-1","Big5");
-				String cusName = convertString(rs.getString("CUSTOMER_NAME"),"ISO-8859-1","Big5");
-				//String calName = convertString(rs.getString("CALLER_NAME"),"ISO-8859-1","Big5");
-				String startDate = rs.getString("START_DATE");
-				String endDate = rs.getString("END_DATE");
-				if(!id.matches("^\\d+$")){
-					//cusName = markName(cusName);
-					//calName = markName(calName);
-				}
-				int totalday = 0;
-				double totleVolume = 0d;
-				if(totalCount.containsKey(serviceid)){
-					String startMonth = startDate.substring(0,6);
-					String endMonth = endDate.substring(0,6);
-					String d;
-					if(totalCount.get(serviceid).containsKey(startMonth)){
-						d = totalCount.get(serviceid).get(startMonth).get("DAY");
-						totalday += (d==null?0:Integer.parseInt(d));
-						d = totalCount.get(serviceid).get(startMonth).get("VOLUME");
-						totleVolume += (d==null?0d:Double.parseDouble(d));
-					}
-					if(!startMonth.endsWith(endMonth)&&totalCount.get(serviceid).containsKey(endMonth)){
-						d = totalCount.get(serviceid).get(endMonth).get("DAY");
-						totalday += (d==null?0:Integer.parseInt(d));
-						d = totalCount.get(serviceid).get(endMonth).get("VOLUME");
-						totleVolume += (d==null?0d:Double.parseDouble(d));
-					}
-				}
 				
 				int inDay = (subCount.get(pid)!=null?Integer.parseInt(subCount.get(pid).get("DAY")):0);
 				double inVolume = (subCount.get(pid)!=null?Double.parseDouble(subCount.get(pid).get("VOLUME")):0.d);
 				
-				report += pfString(new String[]{
-						rs.getString("CHTMSISDN"),
-						startDate,
-						endDate,
-						//convertString(rs.getString("EMAIL"),"ISO-8859-1","Big5"),
-						rs.getString("ALERTED"),
-						rs.getString("CREATE_TIME"),
-						nvl(rs.getString("CANCEL_TIME")," "),
-						cusName,
-						//calName,
-						convertString(rs.getString("PHONE_TYPE"),"ISO-8859-1","Big5"),
-						//String.valueOf(volumeList.get(pid)==null?FormatDouble(0d, "0.0000"):FormatDouble((Double) volumeList.get(pid)/1024/1024, "0.0000")),
-						String.valueOf(inVolume),
-						String.valueOf(FormatDouble(Math.abs(totleVolume-inVolume), "0.0000")),
-						String.valueOf(inDay),
-						String.valueOf(totalday-inDay),
-						});
+				Map<String,Object> md = new HashMap<String,Object>();
+				md.put("msisdn", rs.getString("CHTMSISDN"));
+				md.put("psDate", rs.getString("START_DATE"));
+				md.put("peDate", rs.getString("END_DATE"));
+				md.put("alerted", rs.getString("ALERTED"));
+				md.put("asDate", rs.getString("CREATE_TIME"));
+				md.put("aeDate", rs.getString("CANCEL_TIME"));
+				md.put("iVolume", inVolume);
+				md.put("iDays", inDay);
+				data.add(md);	
+				
 			}
-			report+="</table></body></html>";
+			
+			
+
 		
 			String mailReceiver = props.getProperty("US.recevier");
 			String subject = "美國流量包 Report";
@@ -1083,9 +1397,21 @@ public class DailyReport implements Runnable{
 				subject = "美國流量包 Deafult Report";
 			}
 			
+			logger.info("Create File "+fileName);
+			Workbook wb = createExcel(head,data,"xlsx",size);
+			File f = new File(fileName);
+			FileOutputStream fo = new FileOutputStream(f);
+			wb.write(fo);
+			fo.close();
+			logger.info("Create File End...");
+
+			String mailContent = "US PacketReport at "+now;
+			//sendMail(subject,mailContent, "CRM_Report", mailReceiver,fileName);
+			sendMailwithAuthenticator(subject,mailContent, "USPacketReport", mailReceiver,fileName);
+			
 			
 			//sendMail("美國流量包Report", report, "DVRS Report", "Galen.Kao@sim2travel.com,douglas.chuang@sim2travel.com,yvonne.lin@sim2travel.com,ranger.kao@sim2travel.com");
-			sendHTMLMail(subject, report, "USPacketReport", mailReceiver );
+			//sendHTMLMail(subject, report, "USPacketReport", mailReceiver );
 			//sendHTMLMail("美國流量包Report", report, "DVRS Report", "ranger.kao@sim2travel.com");
 			
 
@@ -1095,6 +1421,14 @@ public class DailyReport implements Runnable{
 			ErrorHandle("At set sendVolumeReport Got a SQLException", e);
 		} catch (UnsupportedEncodingException e) {
 			ErrorHandle("At set sendVolumeReport Got a UnsupportedEncodingException", e);
+		} catch (FileNotFoundException e) {
+			ErrorHandle("At set sendVolumeReport Got a FileNotFoundException", e);
+		} catch (AddressException e) {
+			ErrorHandle("At set sendVolumeReport Got a AddressException", e);
+		} catch (MessagingException e) {
+			ErrorHandle("At set sendVolumeReport Got a MessagingException", e);
+		} catch (IOException e) {
+			ErrorHandle("At set sendVolumeReport Got a IOException", e);
 		}finally{
 			try {
 				if(st!=null)
