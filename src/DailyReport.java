@@ -81,6 +81,10 @@ public class DailyReport implements Runnable{
 	static boolean CRMReportSend = false;
 	static boolean SMSReportSend = false;
 	static boolean AnnexReportSend = false;
+	static boolean go2PlayReportSend = false;
+	static boolean applicationReportSend = false;
+	static boolean fineMifiReportSend = false;
+	static boolean yunYoBoReportSend = false;
 	
 	String home_dir;
 	DailyReport() throws FileNotFoundException, IOException{
@@ -95,6 +99,10 @@ public class DailyReport implements Runnable{
 		CRMReportSend = "TRUE".equals(props.getProperty("CRM.preDo").toUpperCase())?true:false;
 		SMSReportSend = "TRUE".equals(props.getProperty("SMS.preDo").toUpperCase())?true:false;
 		AnnexReportSend = "TRUE".equals(props.getProperty("Annex.preDo").toUpperCase())?true:false;
+		go2PlayReportSend = "TRUE".equals(props.getProperty("GO2PLAY.preDo").toUpperCase())?true:false;
+		applicationReportSend = "TRUE".equals(props.getProperty("App.preDo").toUpperCase())?true:false;
+		fineMifiReportSend = "TRUE".equals(props.getProperty("FineMifi.preDo").toUpperCase())?true:false;
+		yunYoBoReportSend = "TRUE".equals(props.getProperty("YunYoBo.preDo").toUpperCase())?true:false;
 	}
 
 	public static void main(String[] args) throws FileNotFoundException, IOException {
@@ -103,6 +111,7 @@ public class DailyReport implements Runnable{
 			@Override
 			public void run() {
 				while(!exit){
+					logger.info("Test Mod t2: "+testMode);
 					String now = sdf.format(new Date());
 					logger.info(now+" program running...");
 					if(now.equals(props.getProperty("Joy.StartTime"))){
@@ -129,9 +138,29 @@ public class DailyReport implements Runnable{
 						AnnexReportSend = true;
 					}
 					
+					if(now.equals(props.getProperty("GO2PLAY.StartTime"))){
+						go2PlayReportSend = true;
+					}
 					
-					if(testMode){ 
-						
+					//20180322 add
+					if(now.equals(props.getProperty("App.StartTime"))){
+						applicationReportSend = true;
+					}
+					
+					//20180509 add
+					if(now.equals(props.getProperty("FineMifi.StartTime"))){
+						fineMifiReportSend = true;
+					}
+					
+					//20180612 add
+					if(now.equals(props.getProperty("YunYoBo.StartTime"))){
+						yunYoBoReportSend = true;
+					}
+					
+					
+					
+					if(testMode) { 
+						logger.info("return");
 						return;
 					}
 					try {
@@ -152,7 +181,7 @@ public class DailyReport implements Runnable{
 	@Override
 	public void run(){
 		while(!exit){
-
+			logger.info("Test Mod t1: "+testMode);
 			try {
 				Thread.sleep(10*1000);
 			} catch (InterruptedException e) {}
@@ -174,12 +203,29 @@ public class DailyReport implements Runnable{
 				}
 				logger.info("joyReport end...");
 			}
+			
+			if(go2PlayReportSend){
+				logger.info("GO2PLAY Report starting...");
+				try {
+					connectDB();
+					go2PlayReport();
+					go2PlayReportSend = false;
+				} catch (Exception e) {
+					ErrorHandle("Can't send GO2PLAY Report!",e);
+				}finally{
+					try {
+						if(conn!=null) conn.close();
+					} catch (SQLException e) {
+					}
+				}
+				logger.info("GO2PLAY Report end...");
+			}
 
 			if(USReportSend){
 				logger.info("US Report starting...");
 				try {
 					connectDB();
-					sendVolumeReport();
+					sendUSReport();
 					USReportSend = false;
 				} catch (Exception e) {
 					ErrorHandle("Can't send US Report!",e);
@@ -241,9 +287,64 @@ public class DailyReport implements Runnable{
 				}
 				logger.info("SMS Report end...");
 			}
+			//20180322 add
+			if(applicationReportSend){
+				logger.info("Application report starting...");
+				try {
+					connectDB();
+					applicationDailyReport();
+					applicationReportSend = false;
+				} catch (Exception e) {
+					ErrorHandle("Can't send Application Report!",e);
+				}finally{
+					try {
+						if(conn!=null) conn.close();
+					} catch (SQLException e) {
+					}
+				}
+				logger.info("Application report end...");
+			}
+			//20180509 add
+			if(fineMifiReportSend){
+				logger.info("FineMi report starting...");
+				try {
+					connectDB();
+					fineMifiReport();
+					fineMifiReportSend = false;
+				} catch (Exception e) {
+					ErrorHandle("Can't send FineMi Report!",e);
+				}finally{
+					try {
+						if(conn!=null) conn.close();
+					} catch (SQLException e) {
+					}
+				}
+				logger.info("FineMi report end...");
+			}
+			
+			//20180312 add
+			if(yunYoBoReportSend){
+				logger.info("YunYoBo report starting...");
+				try {
+					connectDB();
+					yunYoBoReport();
+					yunYoBoReportSend = false;
+				} catch (Exception e) {
+					ErrorHandle("Can't send FineMi Report!",e);
+				}finally{
+					try {
+						if(conn!=null) conn.close();
+					} catch (SQLException e) {
+					}
+				}
+				logger.info("YunYoBo report end...");
+			}
 			
 			
-			if(testMode) return;
+			if(testMode) { 
+				logger.info("return");
+				return;
+			}
 			try {
 				Thread.sleep(1000*60);
 			} catch (InterruptedException e) {
@@ -258,7 +359,7 @@ public class DailyReport implements Runnable{
 		String fileName = "SoftleaderOK"+dateS+".xlsx";
 		List<Map<String,String>> head = new ArrayList<Map<String,String>>();
 		List<Map<String,Object>> data = new ArrayList<Map<String,Object>>();
-List<Map<String,Integer>> size = new ArrayList<Map<String,Integer>>();
+		List<Map<String,Integer>> size = new ArrayList<Map<String,Integer>>();
 		
 		
 		Map<String,Integer> mz = null;
@@ -789,6 +890,8 @@ List<Map<String,Integer>> size = new ArrayList<Map<String,Integer>>();
 				cell = row.createCell(col);
 				cell.setCellStyle(style);
 				cell.setCellValue(head.get(col).get("name"));
+				if(head.get(col).get("size")!=null)
+					sheet.setColumnWidth(col, 256*Integer.valueOf(head.get(col).get("size")));
 			}
 			
 			for(int r = 0 ; r<data.size() ;r++){
@@ -806,9 +909,9 @@ List<Map<String,Integer>> size = new ArrayList<Map<String,Integer>>();
 			if(total!=0){
 				//20161201 增加總量
 				row = sheet.createRow(rowN++);
-				row.createCell(1).setCellValue("total");
-				row.createCell(2).setCellValue(total);
-				row.createCell(3).setCellValue("MB");
+				row.createCell(2).setCellValue("total");
+				row.createCell(3).setCellValue(total);
+				row.createCell(4).setCellValue("MB");
 			}
 			
 			
@@ -837,8 +940,8 @@ List<Map<String,Integer>> size = new ArrayList<Map<String,Integer>>();
 		
 		//sendMailwithAuthenticator("JoyTest","TestMail", "Joy_Report", props.getProperty("default.recevier"),null);
 		
-		String imsiStart = props.getProperty("IMSI.start");
-		String imsiEnd = props.getProperty("IMSI.end");
+		String imsiStart = props.getProperty("Joy.IMSI.start");
+		String imsiEnd = props.getProperty("Joy.IMSI.end");
 		
 		if("".equals(imsiStart)||"".equals(imsiEnd))
 			throw new Exception("no efficient imsi set.");
@@ -977,13 +1080,496 @@ List<Map<String,Integer>> size = new ArrayList<Map<String,Integer>>();
 		}
 	}
 	
-	private static Map<String,String> mapSetting(String name,String col){
+	public void go2PlayReport() throws Exception{
+		
+		//sendMailwithAuthenticator("JoyTest","TestMail", "Joy_Report", props.getProperty("default.recevier"),null);
+		
+		String imsiStart = props.getProperty("GO2PLAY.IMSI.start");
+		String imsiEnd = props.getProperty("GO2PLAY.IMSI.end");
+		
+		if("".equals(imsiStart)||"".equals(imsiEnd))
+			throw new Exception("no efficient imsi set.");
+			
+		Calendar c = Calendar.getInstance();
+		c.set(Calendar.DAY_OF_YEAR, c.get(Calendar.DAY_OF_YEAR)-1);
+		String today = sdf3.format(c.getTime());
+		
+		String sql = "";
+		Statement st = null;
+		ResultSet rs = null;
+		double total = 0;
+		try {
+			String csvContent = "IMSI, START_DATE, VOLUME_MB";
+			//String csvName = "Joy-TWdata"+today.replace("/", "")+".csv";
+			String csvName = "GO2PLAY-data"+today.replace("/", "")+".xls";
+			
+			st = conn.createStatement();
+			//20161201 新增ICCID資料
+			Map<String,String> iccidMap = new HashMap<String,String>();
+			sql = "select serviceid,imsi,iccid from imsi A where IMSI>'"+imsiStart+"' AND IMSI <='"+imsiEnd+"' ";
+					//+ "serviceid in (select serviceid from service where priceplanid = 167) ";
+			logger.info("Execute SQL : "+sql);
+			rs = st.executeQuery(sql);
+			
+			while(rs.next()){
+				iccidMap.put(rs.getString("imsi"), rs.getString("iccid"));
+			}
+			
+			rs.close();
+			
+			/*sql = "SELECT IMSI, MIN(SUBSTR(CALLTIME,1,10)) START_DATE, SUM(DATAVOLUME)/1024/1024 VOLUME_MB "
+					+ "FROM HUR_DATA_USAGE "
+					+ "WHERE IMSI>'"+imsiStart+"' AND IMSI <='"+imsiEnd+"' "
+					+ "AND SUBSTR(CALLTIME,1,10)<='"+today+"' "
+					+ "GROUP BY IMSI "
+					+ "order by START_DATE DESC ";*/
+			//因Hur_data_usage可能搬移資料，改以日累計作為統計來源
+			sql = "SELECT A.IMSI, MIN(B.DAY) START_DATE, SUM(B.VOLUME)/1024/1024 VOLUME_MB "
+					+ "from ("
+					+ "			SELECT A.serviceid , NEWIMSI IMSI "
+					+ "			from ( "
+					+ "						SELECT c.serviceid, c.servicecode, '' OldIMSI, a.fieldvalue NewIMSI, b.COMPLETEDATE, b.orderid, 'New' OrderType "
+					+ "						FROM NEWSERVICEORDERINFO a, serviceorder b, service c "
+					+ "						WHERE a.fieldid=3713 AND a.orderid=b.orderid "
+					+ "						AND b.serviceid=c.serviceid "
+					+ "						AND TO_CHAR(c.dateactivated,'yyyymmdd')>='20070205' "
+					+ "						AND TO_CHAR(b.completedate,'yyyymmdd')>='20070205' "
+					+ "						UNION ALL "
+					+ "						SELECT c.SERVICEID, C.servicecode, a.oldvalue OldIMSI, A.NEWVALUE imsi, A.COMPLETEDATE, b.orderid, 'Change' OrderType "
+					+ "						FROM SERVICEINFOCHANGEORDER A, SERVICEORDER B, SERVICE C "
+					+ "						WHERE A.FIELDID=3713 AND A.ORDERID=B.ORDERID "
+					+ "						AND B.SERVICEID=C.SERVICEID "
+					+ "						AND TO_CHAR(c.dateactivated,'yyyymmdd')>='20070205' "
+					+ "						AND TO_CHAR(a.completedate,'yyyymmdd')>='20070205' "
+					+ "						AND a.oldvalue <> a.newvalue) A, "
+					+ "					("
+					+ "						SELECT SERVICEID,MAX(COMPLETEDATE) COMPLETEDATE "
+					+ "						FROM ( "
+					+ "									SELECT c.serviceid, c.servicecode, '' OldIMSI, a.fieldvalue NewIMSI, b.COMPLETEDATE, b.orderid, 'New' OrderType "
+					+ "									FROM NEWSERVICEORDERINFO a, serviceorder b, service c "
+					+ "									WHERE a.fieldid=3713 AND a.orderid=b.orderid "
+					+ "									AND b.serviceid=c.serviceid "
+					+ "									AND TO_CHAR(c.dateactivated,'yyyymmdd')>='20070205' "
+					+ "									AND TO_CHAR(b.completedate,'yyyymmdd')>='20070205' "
+					+ "									UNION ALL "
+					+ "									SELECT c.SERVICEID, C.servicecode, a.oldvalue OldIMSI, A.NEWVALUE imsi, A.COMPLETEDATE, b.orderid, 'Change' OrderType "
+					+ "									FROM SERVICEINFOCHANGEORDER A, SERVICEORDER B, SERVICE C "
+					+ "									WHERE A.FIELDID=3713 AND A.ORDERID=B.ORDERID "
+					+ "									AND B.SERVICEID=C.SERVICEID "
+					+ "									AND TO_CHAR(c.dateactivated,'yyyymmdd')>='20070205' "
+					+ "									AND TO_CHAR(a.completedate,'yyyymmdd')>='20070205' "
+					+ "									AND a.oldvalue <> a.newvalue )"
+					+ "						GROUP BY SERVICEID) B"
+					+ "			WHERE A.SERVICEID = B.SERVICEID AND A.COMPLETEDATE = B.COMPLETEDATE ) A  , "
+					+ "			HUR_CURRENT_DAY B "
+					+ "WHERE A.SERVICEID = B.SERVICEID "
+					+ "AND A.IMSI>'"+imsiStart+"' AND A.IMSI <='"+imsiEnd+"' "
+					+ "AND B.DAY >= '20180118' AND B.DAY<='"+today+"' "
+					+ "GROUP BY IMSI "
+					+ "order by START_DATE DESC ";
+			
+			
+			logger.info("Execute SQL : "+sql);
+			rs = st.executeQuery(sql);
+			List<Map<String,Object>> data = new ArrayList<Map<String,Object>>();
+			while(rs.next()){
+				if(!"".equals(csvContent))
+					csvContent+="\n";
+				csvContent+=rs.getString("IMSI")+","+rs.getString("START_DATE")+","+
+					FormatDouble(Double.valueOf(rs.getString("VOLUME_MB")==null?"0":rs.getString("VOLUME_MB")), null);
+			
+				Map<String,Object> m = new HashMap<String,Object>();
+				String imsi = rs.getString("IMSI");
+				String iccid =  iccidMap.get(imsi);
+				double volume = Double.valueOf(rs.getString("VOLUME_MB")==null?"0":rs.getString("VOLUME_MB"));
+				m.put("IMSI", imsi);
+				m.put("START_DATE", rs.getString("START_DATE"));
+				m.put("VOLUME_MB", FormatDouble(volume, null));
+				m.put("ICCID",iccid);
+				data.add(m);
+				total+= volume;
+			}
+			//createFile(csvName,csvContent);
+			
+			List<Map<String,String>> head = new ArrayList<Map<String,String>>();
+			head.add(mapSetting("IMSI","IMSI"));
+			head.add(mapSetting("START_DATE","START_DATE"));
+			head.add(mapSetting("VOLUME_MB","VOLUME_MB"));
+			head.add(mapSetting("ICCID","ICCID"));
+		
+			createSheetFile(csvName,head,data,total);
+			String mailReceiver = props.getProperty("GO2PLAY.recevier");
+			String subject = "GO2PLAY daily report-"+today.replace("/", "");
+			if(testMode || mailReceiver == null || "".equals(mailReceiver)){
+				mailReceiver = props.getProperty("default.recevier");
+				//subject = "Joy default Report";
+			}
+			
+			String mailContent = "Dear GO2PLAY colleagues,\n"
+					+ "\n"
+					+ "Please see the daily report.\n"
+					+ "Thank you very much.\n"
+					+ "\n"
+					+ "Sim2travel Inc.";
+			
+			//sendMail(subject,mailContent, "Joy_Report", mailReceiver,csvName);
+			sendMailwithAuthenticator(subject,mailContent, "GO2PLAY_Report", mailReceiver,csvName);
+		} finally {
+			try {
+				if (rs != null)
+					rs.close();
+				if (st != null)
+					st.close();
+			} catch (Exception e) {	}
+		}
+	}
+	//20180509
+	public void fineMifiReport() throws Exception{
+
+		String subsidiaryID = props.getProperty("FineMifi.subsidiaryID");
+		
+		if("".equals(subsidiaryID))
+			throw new Exception("FineMifi no efficient subsidiaryID set.");
+			
+		Calendar c = Calendar.getInstance();
+		c.set(Calendar.DAY_OF_YEAR, c.get(Calendar.DAY_OF_YEAR)-1);
+		String today = sdf3.format(c.getTime());
+		
+		String sql = "";
+		Statement st = null;
+		ResultSet rs = null;
+		double total = 0;
+		try {
+			String csvContent = "IMSI, START_DATE, VOLUME_MB";
+			//String csvName = "Joy-TWdata"+today.replace("/", "")+".csv";
+			String csvName = "FineMifi-data"+today.replace("/", "")+".xls";
+			
+			st = conn.createStatement();
+			/*//20161201 新增ICCID資料
+			Map<String,String> iccidMap = new HashMap<String,String>();
+			sql = "select serviceid,imsi,iccid from imsi A where A.serviceid in (select serviceid from service where subsidiaryID = "+subsidiaryID+") ";
+			logger.info("Execute SQL : "+sql);
+			rs = st.executeQuery(sql);
+			
+			while(rs.next()){
+				iccidMap.put(rs.getString("imsi"), rs.getString("iccid"));
+			}
+			
+			rs.close();
+			
+			sql = "SELECT IMSI, MIN(SUBSTR(CALLTIME,1,10)) START_DATE, SUM(DATAVOLUME)/1024/1024 VOLUME_MB "
+					+ "FROM HUR_DATA_USAGE "
+					+ "WHERE IMSI>'"+imsiStart+"' AND IMSI <='"+imsiEnd+"' "
+					+ "AND SUBSTR(CALLTIME,1,10)<='"+today+"' "
+					+ "GROUP BY IMSI "
+					+ "order by START_DATE DESC ";
+			//因Hur_data_usage可能搬移資料，改以日累計作為統計來源
+			sql = "SELECT A.IMSI, MIN(B.DAY) START_DATE, SUM(B.VOLUME)/1024/1024 VOLUME_MB "
+					+ "from ("
+					+ "			SELECT A.serviceid , NEWIMSI IMSI "
+					+ "			from ( "
+					+ "						SELECT c.serviceid, c.servicecode, '' OldIMSI, a.fieldvalue NewIMSI, b.COMPLETEDATE, b.orderid, 'New' OrderType "
+					+ "						FROM NEWSERVICEORDERINFO a, serviceorder b, service c "
+					+ "						WHERE a.fieldid=3713 AND a.orderid=b.orderid "
+					+ "						AND b.serviceid=c.serviceid "
+					+ "						AND TO_CHAR(c.dateactivated,'yyyymmdd')>='20070205' "
+					+ "						AND TO_CHAR(b.completedate,'yyyymmdd')>='20070205' "
+					+ "						UNION ALL "
+					+ "						SELECT c.SERVICEID, C.servicecode, a.oldvalue OldIMSI, A.NEWVALUE imsi, A.COMPLETEDATE, b.orderid, 'Change' OrderType "
+					+ "						FROM SERVICEINFOCHANGEORDER A, SERVICEORDER B, SERVICE C "
+					+ "						WHERE A.FIELDID=3713 AND A.ORDERID=B.ORDERID "
+					+ "						AND B.SERVICEID=C.SERVICEID "
+					+ "						AND TO_CHAR(c.dateactivated,'yyyymmdd')>='20070205' "
+					+ "						AND TO_CHAR(a.completedate,'yyyymmdd')>='20070205' "
+					+ "						AND a.oldvalue <> a.newvalue) A, "
+					+ "					("
+					+ "						SELECT SERVICEID,MAX(COMPLETEDATE) COMPLETEDATE "
+					+ "						FROM ( "
+					+ "									SELECT c.serviceid, c.servicecode, '' OldIMSI, a.fieldvalue NewIMSI, b.COMPLETEDATE, b.orderid, 'New' OrderType "
+					+ "									FROM NEWSERVICEORDERINFO a, serviceorder b, service c "
+					+ "									WHERE a.fieldid=3713 AND a.orderid=b.orderid "
+					+ "									AND b.serviceid=c.serviceid "
+					+ "									AND TO_CHAR(c.dateactivated,'yyyymmdd')>='20070205' "
+					+ "									AND TO_CHAR(b.completedate,'yyyymmdd')>='20070205' "
+					+ "									UNION ALL "
+					+ "									SELECT c.SERVICEID, C.servicecode, a.oldvalue OldIMSI, A.NEWVALUE imsi, A.COMPLETEDATE, b.orderid, 'Change' OrderType "
+					+ "									FROM SERVICEINFOCHANGEORDER A, SERVICEORDER B, SERVICE C "
+					+ "									WHERE A.FIELDID=3713 AND A.ORDERID=B.ORDERID "
+					+ "									AND B.SERVICEID=C.SERVICEID "
+					+ "									AND TO_CHAR(c.dateactivated,'yyyymmdd')>='20070205' "
+					+ "									AND TO_CHAR(a.completedate,'yyyymmdd')>='20070205' "
+					+ "									AND a.oldvalue <> a.newvalue )"
+					+ "						GROUP BY SERVICEID) B"
+					+ "			WHERE A.SERVICEID = B.SERVICEID AND A.COMPLETEDATE = B.COMPLETEDATE ) A  , "
+					+ "			HUR_CURRENT_DAY B "
+					+ "WHERE A.SERVICEID = B.SERVICEID "
+					+ "AND A.serviceid in (select serviceid from service where subsidiaryID = "+subsidiaryID+") "
+					+ "AND B.DAY >= '20180118' AND B.DAY<='"+today+"' "
+					+ "GROUP BY IMSI "
+					+ "order by START_DATE DESC ";*/
+			
+			//20180606 add
+			sql = "select a.serviceid,a.imsi,a.iccid ,MIN(C.DAY) START_DATE, SUM(C.VOLUME)/1024/1024 VOLUME_MB " 
+					+ "from imsi a,service b,HUR_CURRENT_DAY c " 
+					+ "where a.serviceid = b.serviceid and a.serviceid = c.serviceid(+) " 
+					+ "and b.subsidiaryID = 79 " 
+					+ "AND ((c.DAY >= '20180118' AND c.DAY<='"+today+"') or c.day is null) "
+					+ "group by a.serviceid,a.imsi,a.iccid " 
+					+ "order by iccid ";
+			
+			
+			logger.info("Execute SQL : "+sql);
+			rs = st.executeQuery(sql);
+			List<Map<String,Object>> data = new ArrayList<Map<String,Object>>();
+			while(rs.next()){
+/*				if(!"".equals(csvContent))
+					csvContent+="\n";
+				csvContent+=rs.getString("IMSI")+","+rs.getString("START_DATE")+","+
+					FormatDouble(Double.valueOf(rs.getString("VOLUME_MB")==null?"0":rs.getString("VOLUME_MB")), null);
+*/			
+				Map<String,Object> m = new HashMap<String,Object>();
+				/*String imsi = rs.getString("IMSI");
+				String iccid =  iccidMap.get(imsi);
+				double volume = Double.valueOf(rs.getString("VOLUME_MB")==null?"0":rs.getString("VOLUME_MB"));
+				m.put("IMSI", imsi);
+				m.put("START_DATE", rs.getString("START_DATE"));
+				m.put("VOLUME_MB", FormatDouble(volume, null));
+				m.put("ICCID",iccid);*/
+				
+				double volume = Double.valueOf(rs.getString("VOLUME_MB")==null?"0":rs.getString("VOLUME_MB"));
+				m.put("IMSI", rs.getString("IMSI"));
+				m.put("START_DATE", rs.getString("START_DATE"));
+				m.put("VOLUME_MB", FormatDouble(volume, null));
+				m.put("ICCID",rs.getString("ICCID"));
+				data.add(m);
+				total+= volume;
+			}
+			//createFile(csvName,csvContent);
+			
+			List<Map<String,String>> head = new ArrayList<Map<String,String>>();
+			head.add(mapSetting("ICCID","ICCID","25"));
+			head.add(mapSetting("IMSI","IMSI","25"));
+			head.add(mapSetting("START_DATE","START_DATE","15"));
+			head.add(mapSetting("VOLUME_MB","VOLUME_MB","15"));
+
+			createSheetFile(csvName,head,data,total);
+			String mailReceiver = props.getProperty("FineMifi.recevier");
+			String subject = "FineMifi daily report-"+today.replace("/", "");
+			if(testMode || mailReceiver == null || "".equals(mailReceiver)){
+				mailReceiver = props.getProperty("default.recevier");
+				//subject = "Joy default Report";
+			}
+			
+			String mailContent = "Dear FineMifi colleagues,\n"
+					+ "\n"
+					+ "Please see the daily report.\n"
+					+ "Thank you very much.\n"
+					+ "\n"
+					+ "Sim2travel Inc.";
+			
+			//sendMail(subject,mailContent, "Joy_Report", mailReceiver,csvName);
+			sendMailwithAuthenticator(subject,mailContent, "FineMifi_Report", mailReceiver,csvName);
+		} finally {
+			try {
+				if (rs != null)
+					rs.close();
+				if (st != null)
+					st.close();
+			} catch (Exception e) {	}
+		}
+	}
+	
+	//20180612 add
+	public void yunYoBoReport() throws Exception{
+
+		Calendar c = Calendar.getInstance();
+		c.set(Calendar.DAY_OF_YEAR, c.get(Calendar.DAY_OF_YEAR)-1);
+		String today = sdf3.format(c.getTime());
+		
+		String sql = "";
+		Statement st = null;
+		ResultSet rs = null;
+		double total = 0;
+		try {
+			String csvContent = "IMSI, START_DATE, VOLUME_MB";
+			//String csvName = "Joy-TWdata"+today.replace("/", "")+".csv";
+			String csvName = "YunYoBo-data"+today.replace("/", "")+".xls";
+			
+			st = conn.createStatement();
+			
+			sql = "SELECT A.IMSI,A.ICCID, MIN(B.DAY) START_DATE, SUM(B.VOLUME)/1024/1024 VOLUME_MB " + 
+					"from imsi a,HUR_CURRENT_DAY b, service c " + 
+					"WHERE a.serviceid = B.serviceid and a.serviceid = c.serviceid " + 
+					"and c.priceplanid in ("+props.getProperty("YunYoBo.pricePlanID", "175,176")+") " + 
+					"group by a.imsi,A.ICCID ";
+			
+			logger.info("Execute SQL : "+sql);
+			rs = st.executeQuery(sql);
+			List<Map<String,Object>> data = new ArrayList<Map<String,Object>>();
+			while(rs.next()){
+				if(!"".equals(csvContent))
+					csvContent+="\n";
+				csvContent+=rs.getString("IMSI")+","+rs.getString("START_DATE")+","+
+					FormatDouble(Double.valueOf(rs.getString("VOLUME_MB")==null?"0":rs.getString("VOLUME_MB")), null);
+			
+				Map<String,Object> m = new HashMap<String,Object>();
+				double volume = Double.valueOf(rs.getString("VOLUME_MB")==null?"0":rs.getString("VOLUME_MB"));
+				m.put("IMSI", rs.getString("IMSI"));
+				m.put("START_DATE", rs.getString("START_DATE"));
+				m.put("VOLUME_MB", FormatDouble(volume, null));
+				m.put("ICCID",rs.getString("ICCID"));
+				data.add(m);
+				total+= volume;
+			}
+			//createFile(csvName,csvContent);
+			
+			List<Map<String,String>> head = new ArrayList<Map<String,String>>();
+			head.add(mapSetting("IMSI","IMSI"));
+			head.add(mapSetting("START_DATE","START_DATE"));
+			head.add(mapSetting("VOLUME_MB","VOLUME_MB"));
+			head.add(mapSetting("ICCID","ICCID"));
+		
+			createSheetFile(csvName,head,data,total);
+			String mailReceiver = props.getProperty("YunYoBo.recevier");
+			String subject = "YunYoBo daily report-"+today.replace("/", "");
+			if(testMode || mailReceiver == null || "".equals(mailReceiver)){
+				mailReceiver = props.getProperty("default.recevier");
+				//subject = "Joy default Report";
+			}
+			
+			String mailContent = "Dear YunYoBo colleagues,\n"
+					+ "\n"
+					+ "Please see the daily report.\n"
+					+ "Thank you very much.\n"
+					+ "\n"
+					+ "Sim2travel Inc.";
+			
+			//sendMail(subject,mailContent, "Joy_Report", mailReceiver,csvName);
+			sendMailwithAuthenticator(subject,mailContent, "YunYoBo_Report", mailReceiver,csvName);
+		} finally {
+			try {
+				if (rs != null)
+					rs.close();
+				if (st != null)
+					st.close();
+			} catch (Exception e) {	}
+		}
+	}
+	private static void applicationDailyReport() throws SQLException {
+		String sql = "select SERVICEID,MAX(VERIFIED_DATE) VERIFIED_DATE ,TYPE  " 
+				+ " from CRM_APPLICATION "  
+				+ " where DATE_FORMAT(VERIFIED_DATE, '%Y%m%d') = DATE_FORMAT(date_sub(curdate(),interval 1 day), '%Y%m%d') " 
+				+ " group by SERVICEID,TYPE "
+				+ " order by VERIFIED_DATE desc ";
+		
+		
+
+		Statement st = null;
+		Statement st2 = null;
+		ResultSet rs = null;
+		
+		Map<String,Map<String,String>> resultMap = new HashMap<String,Map<String,String>>();
+		
+		try {
+			conn3 = DriverManager.getConnection("jdbc:mysql://10.42.1.199:3306/CRM_DB?characterEncoding=utf8", "crmuser", "crm");
+			st = conn3.createStatement();
+			logger.info("Execute:"+sql);
+			rs = st.executeQuery(sql);
+			
+			while(rs.next()) {
+				
+				Map<String,String> m = new HashMap<String,String>();
+				m.put("VERIFIED_DATE", rs.getString("VERIFIED_DATE"));
+				m.put("TYPE", rs.getString("TYPE"));
+				resultMap.put(rs.getString("serviceid"), m);
+				
+			}
+			
+			String serviceids = "";
+			
+			for(String serviceid:resultMap.keySet()) {
+				if(!"".equals(serviceids))
+					serviceids += ",";
+				serviceids+= serviceid;
+			}
+			if(!"".equals(serviceids)){
+				//分成"還在使用中的"、"serviceCoder記錄中都以退租最大的"，取一(nvl(沒有正使用,找最大))，配出serviceCode
+				String sql2 = "select A.serviceid,A.servicecode "
+						+ "from service a,( "
+						+ "select nvl(b.serviceid,a.serviceid) serviceid "
+						+ "from (select servicecode,MAX(serviceid) serviceid "
+						+ "from service "
+						+ "group by servicecode ) A, "
+						+ "(select servicecode,serviceid "
+						+ "from service "
+						+ "where DATECANCELED is null ) B "
+						+ "where A.servicecode = B.servicecode(+) "
+						+ "and A.serviceid in "
+						+ "("+serviceids+"))b "
+						+ "where a.serviceid = b.serviceid ";
+				
+				st2 = conn.createStatement();
+				rs = null;
+				logger.info("Execute:"+sql2);
+				rs = st2.executeQuery(sql2);
+				
+				while(rs.next()) {
+					String serviceid = rs.getString("SERVICEID");
+					Map<String,String> m = resultMap.get(serviceid);
+					m.put("MSISDN", rs.getString("SERVICECODE"));
+					resultMap.put(serviceid, m);
+				}
+			}
+			
+			
+			String applicationDate = sdf2.format(new Date(new Date().getTime()-24*60*60*1000));
+			String mailContent = applicationDate+"申請書登記結果("+resultMap.size()+"筆)\n";
+			
+			mailContent += "S2T_MSISDN,VERIFIED_DATE,TYPE\n";
+			for(String serviceid : resultMap.keySet()) {
+				Map<String,String> m = resultMap.get(serviceid);
+				mailContent += m.get("MSISDN")+"("+serviceid+"),"+m.get("VERIFIED_DATE")+","+m.get("TYPE")+"\n";
+			}
+			
+			String mailReceiver = props.getProperty("App.recevier");
+			String subject = applicationDate+"application result.";
+			if(testMode || mailReceiver == null || "".equals(mailReceiver)){
+				mailReceiver = props.getProperty("default.recevier");
+			}
+			sendMail(subject, mailContent, "Dailyreport_SERVER", mailReceiver, null);
+			
+		}finally {
+			try {
+				if (rs != null)
+					rs.close();
+			} catch (Exception e) {	}
+			try {
+				if (st != null)
+					st.close();
+			} catch (Exception e) {	}
+			try {
+				if (conn3 != null)
+					conn3.close();
+			} catch (Exception e) {	}
+		}
+		
+		
+	}
+	
+	private static Map<String,String> mapSetting(String name,String col,String size){
 		Map<String, String> m = new HashMap<String,String>();
 		
 		m.put("name", name);
 		m.put("col", col);
 		
+		if(size!=null)
+			m.put("size", size);
+		
 		return m;
+	}
+	
+	private static Map<String,String> mapSetting(String name,String col){
+		return mapSetting(name,col,null);
 	}
 
 	public void createFile(String fileName,String content) throws IOException{
@@ -1187,8 +1773,8 @@ List<Map<String,Integer>> size = new ArrayList<Map<String,Integer>>();
 	
 	
 	
-	public void sendVolumeReport(){
-		logger.info("sendVolumeReport...");
+	public void sendUSReport(){
+		logger.info("sendUSReport...");
 		
 		Date now = new Date();
 		String sDate = new SimpleDateFormat("yyyyMMdd").format(now);
@@ -1327,7 +1913,7 @@ List<Map<String,Integer>> size = new ArrayList<Map<String,Integer>>();
 					"select A.PID,count(1) CD ,sum(B.s) SU "
 					+ "from HUR_VOLUME_POCKET A,(	select B.Serviceid,B.day,sum(B.volume) s "
 					+ "								from HUR_CURRENT_DAY B "
-					+ "								where B.MCCMNC like '310%' "
+					+ "								where B.MCCMNC like '310%' and B.day <= "+sDate+" "
 					+ "								group by B.Serviceid,B.day) B "
 					+ "where A.SERVICEID = B.Serviceid AND A.START_DATE<=B.day AND A.END_DATE>=B.day "
 					+ "group by A.PID "
@@ -1418,17 +2004,17 @@ List<Map<String,Integer>> size = new ArrayList<Map<String,Integer>>();
 				
 
 		} catch (SQLException e) {
-			ErrorHandle("At set sendVolumeReport Got a SQLException", e);
+			ErrorHandle("At set sendUSReport Got a SQLException", e);
 		} catch (UnsupportedEncodingException e) {
-			ErrorHandle("At set sendVolumeReport Got a UnsupportedEncodingException", e);
+			ErrorHandle("At set sendUSReport Got a UnsupportedEncodingException", e);
 		} catch (FileNotFoundException e) {
-			ErrorHandle("At set sendVolumeReport Got a FileNotFoundException", e);
+			ErrorHandle("At set sendUSReport Got a FileNotFoundException", e);
 		} catch (AddressException e) {
-			ErrorHandle("At set sendVolumeReport Got a AddressException", e);
+			ErrorHandle("At set sendUSReport Got a AddressException", e);
 		} catch (MessagingException e) {
-			ErrorHandle("At set sendVolumeReport Got a MessagingException", e);
+			ErrorHandle("At set sendUSReport Got a MessagingException", e);
 		} catch (IOException e) {
-			ErrorHandle("At set sendVolumeReport Got a IOException", e);
+			ErrorHandle("At set sendUSReport Got a IOException", e);
 		}finally{
 			try {
 				if(st!=null)
@@ -1455,18 +2041,18 @@ List<Map<String,Integer>> size = new ArrayList<Map<String,Integer>>();
 		return Double.valueOf(new DecimalFormat(form).format(value));
 	}
 	
-public static String convertString(String msg,String sCharset,String dCharset) throws UnsupportedEncodingException{
-		
+	public static String convertString(String msg,String sCharset,String dCharset) throws UnsupportedEncodingException{
+			
+			if(msg==null)
+				msg=" ";
+			
+			return sCharset==null? new String(msg.getBytes(),dCharset):new String(msg.getBytes(sCharset),dCharset);
+		}
+	public static String nvl(Object msg,String s){
 		if(msg==null)
-			msg=" ";
-		
-		return sCharset==null? new String(msg.getBytes(),dCharset):new String(msg.getBytes(sCharset),dCharset);
+			msg = s;
+		return msg.toString();
 	}
-public static String nvl(Object msg,String s){
-	if(msg==null)
-		msg = s;
-	return msg.toString();
-}
 	
 	static String errorMsg;
 	public static void ErrorHandle(String cont,Exception e){
@@ -1492,7 +2078,7 @@ public static String nvl(Object msg,String s){
 	static void sendErrorMail(String msg){
 
 		errorReceviver=props.getProperty("mail.errorReceviver");
-		errorSubject="DVRS Warnning Mail";
+		errorSubject="DailyReport Warnning Mail";
 		errorContent="Error :"+msg+"<br>\n"
 				+ "Error occurr time: "+DateFormat()+"<br>\n"
 				+ "Error Msg : "+errorMsg;	
@@ -1500,7 +2086,7 @@ public static String nvl(Object msg,String s){
 		String [] cmd=new String[3];
 		cmd[0]="/bin/bash";
 		cmd[1]="-c";
-		cmd[2]= "/bin/echo \""+errorContent+"\" | /bin/mail -s \""+errorSubject+"\" -r DVRS_ALERT "+errorReceviver;
+		cmd[2]= "/bin/echo \""+errorContent+"\" | /bin/mail -s \""+errorSubject+"\" -r DailyReport_ALERT "+errorReceviver;
 
 		try{
 			Process p = Runtime.getRuntime().exec (cmd);
