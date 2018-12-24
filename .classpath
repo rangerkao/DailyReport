@@ -6,7 +6,7 @@
 	<classpathentry kind="lib" path="D:/MEGAsync/download/jar/poi-bin-3.10.1-20140818/poi-3.10.1/poi-ooxml-3.10.1-20140818.jar"/>
 	<classpathentry kind="lib" path="D:/MEGAsync/download/jar/poi-bin-3.10.1-20140818/poi-3.10.1/poi-ooxml-schemas-3.10.1-20140818.jar"/>
 	<classpathentry kind="lib" path="D:/MEGAsync/download/jar/log4j-1.2.17.jar"/>
-	<classpathentry kind="lib" path="D:/MEGAsync/download/jar/mail-1.4.jar"/>
+	<classpathentry kind="lib" path="D:/MEGAsync/download/jar/mail-1.4.jar" sourcepath="C:/Users/Ranger/.m2/repository/javax/mail/mail/1.4/mail-1.4-sources.jar"/>
 	<classpathentry kind="lib" path="D:/MEGAsync/download/jar/mysql-connector-java-5.1.17-bin.jar"/>
 	<classpathentry kind="lib" path="D:/MEGAsync/download/jar/ojdbc14.jar"/>
 	<classpathentry kind="lib" path="D:/MEGAsync/download/jar/commons-net-3.3/commons-net-3.3.jar"/>

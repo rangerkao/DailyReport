@@ -85,6 +85,8 @@ public class DailyReport implements Runnable{
 	static boolean applicationReportSend = false;
 	static boolean fineMifiReportSend = false;
 	static boolean yunYoBoReportSend = false;
+	static boolean CCTReportSend = false;
+	static boolean FanTravelReportSend = false;
 	
 	String home_dir;
 	DailyReport() throws FileNotFoundException, IOException{
@@ -103,6 +105,8 @@ public class DailyReport implements Runnable{
 		applicationReportSend = "TRUE".equals(props.getProperty("App.preDo").toUpperCase())?true:false;
 		fineMifiReportSend = "TRUE".equals(props.getProperty("FineMifi.preDo").toUpperCase())?true:false;
 		yunYoBoReportSend = "TRUE".equals(props.getProperty("YunYoBo.preDo").toUpperCase())?true:false;
+		CCTReportSend = "TRUE".equals(props.getProperty("CCT.preDo").toUpperCase())?true:false;
+		FanTravelReportSend = "TRUE".equals(props.getProperty("FanTravel.preDo").toUpperCase())?true:false;
 	}
 
 	public static void main(String[] args) throws FileNotFoundException, IOException {
@@ -155,6 +159,16 @@ public class DailyReport implements Runnable{
 					//20180612 add
 					if(now.equals(props.getProperty("YunYoBo.StartTime"))){
 						yunYoBoReportSend = true;
+					}
+					
+					//20180731 add
+					if(now.equals(props.getProperty("CCT.StartTime"))){
+						CCTReportSend = true;
+					}
+					
+					//20180731 add
+					if(now.equals(props.getProperty("FanTravel.StartTime"))){
+						FanTravelReportSend = true;
 					}
 					
 					
@@ -330,7 +344,7 @@ public class DailyReport implements Runnable{
 					yunYoBoReport();
 					yunYoBoReportSend = false;
 				} catch (Exception e) {
-					ErrorHandle("Can't send FineMi Report!",e);
+					ErrorHandle("Can't send YunYoBo Report!",e);
 				}finally{
 					try {
 						if(conn!=null) conn.close();
@@ -338,6 +352,42 @@ public class DailyReport implements Runnable{
 					}
 				}
 				logger.info("YunYoBo report end...");
+			}
+			
+			//20180731 add
+			if(CCTReportSend){
+				logger.info("CCT report starting...");
+				try {
+					connectDB();
+					CCTReport();
+					CCTReportSend = false;
+				} catch (Exception e) {
+					ErrorHandle("Can't send CCT Report!",e);
+				}finally{
+					try {
+						if(conn!=null) conn.close();
+					} catch (SQLException e) {
+					}
+				}
+				logger.info("CCT report end...");
+			}
+			
+			//20181008 add
+			if(FanTravelReportSend){
+				logger.info("FanTravel report starting...");
+				try {
+					connectDB();
+					FanTravelReport();
+					FanTravelReportSend = false;
+				} catch (Exception e) {
+					ErrorHandle("Can't send FanTravel Report!",e);
+				}finally{
+					try {
+						if(conn!=null) conn.close();
+					} catch (SQLException e) {
+					}
+				}
+				logger.info("FanTravel report end...");
 			}
 			
 			
@@ -445,7 +495,7 @@ public class DailyReport implements Runnable{
 		fo.close();
 		logger.info("Create File End...");
 		
-		FTPClient ftp = null;
+		/*FTPClient ftp = null;
 		
 		try {
 			
@@ -456,7 +506,7 @@ public class DailyReport implements Runnable{
 			UpdatToFTP(ftp,fileName,fileName);
 		} finally {
 			if(ftp!=null) ftp.disconnect();
-		}		
+		}		*/
 		
 		String subject = "SoftLeader簡訊發送結果"+dateS,mailReceiver=props.getProperty("SMS.recevier");
 		String mailContent = "Softleader 簡訊發送成功筆數為 "+i+" 筆";
@@ -1104,9 +1154,13 @@ public class DailyReport implements Runnable{
 			String csvName = "GO2PLAY-data"+today.replace("/", "")+".xls";
 			
 			st = conn.createStatement();
-			//20161201 新增ICCID資料
+			/*//20161201 新增ICCID資料
 			Map<String,String> iccidMap = new HashMap<String,String>();
-			sql = "select serviceid,imsi,iccid from imsi A where IMSI>'"+imsiStart+"' AND IMSI <='"+imsiEnd+"' ";
+			sql = "select serviceid,imsi,iccid from imsi A "
+					+ "where (IMSI>='454120290050007' AND IMSI <='454120290057006') "
+					+ "OR  (IMSI>='454120290066022' AND IMSI <='454120290067021') "
+					+ "OR  (IMSI>='454120290075022' AND IMSI <='454120290076021') "
+					+ "";
 					//+ "serviceid in (select serviceid from service where priceplanid = 167) ";
 			logger.info("Execute SQL : "+sql);
 			rs = st.executeQuery(sql);
@@ -1117,14 +1171,14 @@ public class DailyReport implements Runnable{
 			
 			rs.close();
 			
-			/*sql = "SELECT IMSI, MIN(SUBSTR(CALLTIME,1,10)) START_DATE, SUM(DATAVOLUME)/1024/1024 VOLUME_MB "
+			sql = "SELECT IMSI, MIN(SUBSTR(CALLTIME,1,10)) START_DATE, SUM(DATAVOLUME)/1024/1024 VOLUME_MB "
 					+ "FROM HUR_DATA_USAGE "
 					+ "WHERE IMSI>'"+imsiStart+"' AND IMSI <='"+imsiEnd+"' "
 					+ "AND SUBSTR(CALLTIME,1,10)<='"+today+"' "
 					+ "GROUP BY IMSI "
 					+ "order by START_DATE DESC ";*/
 			//因Hur_data_usage可能搬移資料，改以日累計作為統計來源
-			sql = "SELECT A.IMSI, MIN(B.DAY) START_DATE, SUM(B.VOLUME)/1024/1024 VOLUME_MB "
+			/*sql = "SELECT A.IMSI, MIN(B.DAY) START_DATE, SUM(B.VOLUME)/1024/1024 VOLUME_MB "
 					+ "from ("
 					+ "			SELECT A.serviceid , NEWIMSI IMSI "
 					+ "			from ( "
@@ -1163,12 +1217,16 @@ public class DailyReport implements Runnable{
 					+ "			WHERE A.SERVICEID = B.SERVICEID AND A.COMPLETEDATE = B.COMPLETEDATE ) A  , "
 					+ "			HUR_CURRENT_DAY B "
 					+ "WHERE A.SERVICEID = B.SERVICEID "
-					+ "AND A.IMSI>'"+imsiStart+"' AND A.IMSI <='"+imsiEnd+"' "
+					//+ "AND A.IMSI>='"+imsiStart+"' AND A.IMSI <='"+imsiEnd+"' "
+					+ "AND ("
+					+ "(IMSI>='454120290050007' AND IMSI <='454120290057006') "
+					+ "OR  (IMSI>='454120290066022' AND IMSI <='454120290067021')"
+					+ "OR  (IMSI>='454120290075022' AND IMSI <='454120290076021') "
+					+ ") "
 					+ "AND B.DAY >= '20180118' AND B.DAY<='"+today+"' "
 					+ "GROUP BY IMSI "
 					+ "order by START_DATE DESC ";
-			
-			
+
 			logger.info("Execute SQL : "+sql);
 			rs = st.executeQuery(sql);
 			List<Map<String,Object>> data = new ArrayList<Map<String,Object>>();
@@ -1188,14 +1246,99 @@ public class DailyReport implements Runnable{
 				m.put("ICCID",iccid);
 				data.add(m);
 				total+= volume;
-			}
+			}*/
 			//createFile(csvName,csvContent);
+			 
+			//20180606 add
+			/*sql = "select a.serviceid,a.imsi,a.iccid ,MIN(C.DAY) START_DATE, SUM(C.VOLUME)/1024/1024 VOLUME_MB,b.PRICEPLANID " 
+					+ "from imsi a,service b,HUR_CURRENT_DAY c " 
+					+ "where a.serviceid = b.serviceid and a.serviceid = c.serviceid(+) " 
+					+ "and b.subsidiaryID = 78 " 
+					+ "AND ((c.DAY >= '20180118' AND c.DAY<='"+today+"')) "
+					+ "group by a.serviceid,a.imsi,a.iccid " 
+					+ "order by START_DATE DESC ";*/
+			
+			/*sql = "select a.serviceid,a.imsi,a.iccid ,MIN(C.DAY) START_DATE, SUM(C.VOLUME)/1024/1024 VOLUME_MB "
+					+ ",( CASE "
+					+ "   WHEN b.PRICEPLANID = 182 then '9020-GO2PLAY-7D' "
+					+ "   WHEN (a.imsi>=454120290056507 and a.imsi<= 454120290057006) then '9020-GO2PLAY-7D'  "
+					+ "   WHEN (a.imsi>=454120290066022  and a.imsi<= 454120290066521 ) then '9020-GO2PLAY-7D' "
+					+ "   else '9009-GO2PLAY'  END ) PRICEPLAN "
+					+ "from imsi a,service b,HUR_CURRENT_DAY c  "
+					+ "where a.serviceid = b.serviceid and a.serviceid = c.serviceid(+)  "
+					+ "and b.subsidiaryID = 78  "
+					+ "AND ((c.DAY >= 20180118 AND c.DAY<="+today+"))  "
+					+ "group by a.serviceid,a.imsi,a.iccid,b.priceplanid  "
+					+ "order by PRICEPLAN ASC,START_DATE DESC ";*/
+			
+			/*sql = "select c.serviceid,d.imsi,d.iccid ,MIN(e.DAY) START_DATE, SUM(e.VOLUME)/1024/1024 VOLUME_MB ,"
+					+ "( CASE  "
+					+ "   WHEN c.PRICEPLANID = 182 then '9020-GO2PLAY-7D'  "
+					+ "   WHEN c.PRICEPLANID = 183 then '9021-GO2PLAY-15D'  "
+					+ "   WHEN (d.imsi>=454120290056507 and d.imsi<= 454120290057006) then '9020-GO2PLAY-7D'   "
+					+ "   WHEN (d.imsi>=454120290066022  and d.imsi<= 454120290066521 ) then '9020-GO2PLAY-7D'  "
+					+ "   else '9009-GO2PLAY'  END ) PRICEPLAN  "
+					+ "FROM NEWSERVICEORDERINFO a, serviceorder b, service c ,imsi d,HUR_CURRENT_DAY e  "
+					+ "WHERE a.fieldid=3713 AND a.orderid=b.orderid  "
+					+ "AND b.serviceid=c.serviceid and a.fieldvalue = d.imsi  "
+					+ "AND TO_CHAR(c.dateactivated,'yyyymmdd')>='20070205'  "
+					+ "AND TO_CHAR(b.completedate,'yyyymmdd')>='20070205' "
+					+ "AND c.serviceid = e.serviceid "
+					+ "and c.subsidiaryID = 78 "
+					+ "AND ((e.DAY >= 20180118 AND e.DAY<='"+today+"')) "
+					+ "group by c.serviceid,d.imsi,d.iccid,c.priceplanid  "
+					+ "order by PRICEPLAN ASC,START_DATE DESC,d.imsi asc  ";*/
+			
+			sql = "select a.serviceid,C.imsi,C.iccid ,MIN(b.DAY) START_DATE, SUM(b.VOLUME)/1024/1024 VOLUME_MB , "
+					+ "case	WHEN (c.imsi>=454120290056507 and c.imsi<= 454120290057006) then 'D-Go2Play-07D'    "
+					+ "     WHEN (c.imsi>=454120290066022 and c.imsi<= 454120290066521) then 'D-Go2Play-07D'   "
+					+ "     else E.NAME END PRICEPLAN "
+					+ "from service a,HUR_CURRENT_DAY b,IMSI C,"
+					+ "		( 	select A.serviceid,nvl(B.newvalue,A.FIELDVALUE) IMSI "
+					+ "			from ( "
+					+ "					select B.SERVICEID,A.FIELDVALUE "
+					+ "					FROM NEWSERVICEORDERINFO A, SERVICEORDER B "
+					+ "					where A.FIELDID=3713 AND A.ORDERID=B.ORDERID "
+					+ "					AND TO_CHAR(a.completedate,'yyyymmdd')>='20070205') A, "
+					+ "				( "
+					+ "					select B.SERVICEID,A.newvalue "
+					+ "					FROM SERVICEINFOCHANGEORDER A, SERVICEORDER B "
+					+ "					where A.FIELDID=3713 AND A.ORDERID=B.ORDERID  "
+					+ "					AND TO_CHAR(a.completedate,'yyyymmdd')>='20070205' ) B "
+					+ "			where A.serviceid = B.serviceid(+)) D ,"
+					+ "		PRICEPLAN E "
+					+ "where A.SERVICEID =B.SERVICEID AND A.SERVICEID = D.SERVICEID "
+					+ "AND C.IMSI = D.IMSI AND E.PRICEPLANID = a.priceplanid "
+					+ "AND A.subsidiaryid = 78 "
+					+ "AND ((b.DAY >= '20180118' AND b.DAY<='20181016'))   "
+					+ "group by a.serviceid,C.imsi,C.ICCID,E.name "
+					+ "order by PRICEPLAN ASC,START_DATE DESC,c.imsi asc ";
+			
+			logger.info("Execute SQL : "+sql);
+			rs = st.executeQuery(sql);
+			List<Map<String,Object>> data = new ArrayList<Map<String,Object>>();
+			while(rs.next()){
+				Map<String,Object> m = new HashMap<String,Object>();				
+				double volume = Double.valueOf(rs.getString("VOLUME_MB")==null?"0":rs.getString("VOLUME_MB"));
+				m.put("IMSI", rs.getString("IMSI"));
+				m.put("START_DATE", rs.getString("START_DATE"));
+				m.put("VOLUME_MB", FormatDouble(volume, null));
+				m.put("ICCID",rs.getString("ICCID"));
+				
+				m.put("PRICEPLAN",rs.getString("PRICEPLAN"));
+				
+				data.add(m);
+				total+= volume;
+			}
+			
+			
 			
 			List<Map<String,String>> head = new ArrayList<Map<String,String>>();
 			head.add(mapSetting("IMSI","IMSI"));
 			head.add(mapSetting("START_DATE","START_DATE"));
 			head.add(mapSetting("VOLUME_MB","VOLUME_MB"));
-			head.add(mapSetting("ICCID","ICCID"));
+			head.add(mapSetting("ICCID","ICCID","40"));
+			head.add(mapSetting("PRICEPLAN","PRICEPLAN"));
 		
 			createSheetFile(csvName,head,data,total);
 			String mailReceiver = props.getProperty("GO2PLAY.recevier");
@@ -1240,7 +1383,7 @@ public class DailyReport implements Runnable{
 		ResultSet rs = null;
 		double total = 0;
 		try {
-			String csvContent = "IMSI, START_DATE, VOLUME_MB";
+			String csvContent = "IMSI, START_DATE, VOLUME_MB, MCCMNC";
 			//String csvName = "Joy-TWdata"+today.replace("/", "")+".csv";
 			String csvName = "FineMifi-data"+today.replace("/", "")+".xls";
 			
@@ -1309,12 +1452,18 @@ public class DailyReport implements Runnable{
 					+ "order by START_DATE DESC ";*/
 			
 			//20180606 add
-			sql = "select a.serviceid,a.imsi,a.iccid ,MIN(C.DAY) START_DATE, SUM(C.VOLUME)/1024/1024 VOLUME_MB " 
-					+ "from imsi a,service b,HUR_CURRENT_DAY c " 
-					+ "where a.serviceid = b.serviceid and a.serviceid = c.serviceid(+) " 
+			sql = "select a.serviceid,a.imsi,a.iccid ,MIN(C.DAY) START_DATE, SUM(C.VOLUME)/1024/1024 VOLUME_MB,d.COUNTRY " 
+					+ "from imsi a,service b,HUR_CURRENT_DAY c,("
+					+ "			Select serviceid,wm_concat(MCCMNC) COUNTRY "
+					+ "			from ("
+					+ "				select distinct serviceid,mccmnc"
+					+ "				from HUR_CURRENT_DAY"
+					+ " 			)	"
+					+ "			GROUP by SERVICEID 		) d " 
+					+ "where a.serviceid = b.serviceid and a.serviceid = c.serviceid(+) and a.serviceid = d.serviceid(+) " 
 					+ "and b.subsidiaryID = 79 " 
 					+ "AND ((c.DAY >= '20180118' AND c.DAY<='"+today+"') or c.day is null) "
-					+ "group by a.serviceid,a.imsi,a.iccid " 
+					+ "group by a.serviceid,a.imsi,a.iccid,d.COUNTRY " 
 					+ "order by iccid ";
 			
 			
@@ -1341,6 +1490,7 @@ public class DailyReport implements Runnable{
 				m.put("START_DATE", rs.getString("START_DATE"));
 				m.put("VOLUME_MB", FormatDouble(volume, null));
 				m.put("ICCID",rs.getString("ICCID"));
+				m.put("MCCMNC",rs.getString("COUNTRY"));
 				data.add(m);
 				total+= volume;
 			}
@@ -1351,6 +1501,7 @@ public class DailyReport implements Runnable{
 			head.add(mapSetting("IMSI","IMSI","25"));
 			head.add(mapSetting("START_DATE","START_DATE","15"));
 			head.add(mapSetting("VOLUME_MB","VOLUME_MB","15"));
+			head.add(mapSetting("MCCMNC","MCCMNC","15"));
 
 			createSheetFile(csvName,head,data,total);
 			String mailReceiver = props.getProperty("FineMifi.recevier");
@@ -1369,6 +1520,85 @@ public class DailyReport implements Runnable{
 			
 			//sendMail(subject,mailContent, "Joy_Report", mailReceiver,csvName);
 			sendMailwithAuthenticator(subject,mailContent, "FineMifi_Report", mailReceiver,csvName);
+			
+			
+			//20180817
+			total = 0;
+			sql = "select a.serviceid,a.imsi,a.iccid ,MIN(C.DAY) START_DATE, SUM(C.VOLUME)/1024/1024 VOLUME_MB,d.COUNTRY " 
+					+ "from imsi a,service b,HUR_CURRENT_DAY c,("
+					+ "			Select serviceid,wm_concat(MCCMNC) COUNTRY "
+					+ "			from ("
+					+ "				select distinct serviceid,mccmnc"
+					+ "				from HUR_CURRENT_DAY"
+					+ " 			)	"
+					+ "			GROUP by SERVICEID 		) d " 
+					+ "where a.serviceid = b.serviceid and a.serviceid = c.serviceid(+) and a.serviceid = d.serviceid(+) " 
+					+ "and b.priceplanid = 174 " 
+					+ "AND ((c.DAY >= '20180118' AND c.DAY<='"+today+"') or c.day is null) "
+					+ "group by a.serviceid,a.imsi,a.iccid,d.COUNTRY " 
+					+ "order by iccid ";
+			
+			
+			logger.info("Execute SQL : "+sql);
+			rs = st.executeQuery(sql);
+			data = new ArrayList<Map<String,Object>>();
+			while(rs.next()){
+				Map<String,Object> m = new HashMap<String,Object>();
+				double volume = Double.valueOf(rs.getString("VOLUME_MB")==null?"0":rs.getString("VOLUME_MB"));
+				m.put("IMSI", rs.getString("IMSI"));
+				m.put("START_DATE", rs.getString("START_DATE"));
+				m.put("VOLUME_MB", FormatDouble(volume, null));
+				m.put("ICCID",rs.getString("ICCID"));
+				m.put("MCCMNC",rs.getString("COUNTRY"));
+				data.add(m);
+				total+= volume;
+			}
+			
+			csvName = "FineMifi-data-priceplan174-"+today.replace("/", "")+".xls";
+
+			createSheetFile(csvName,head,data,total);			
+			
+			//sendMail(subject,mailContent, "Joy_Report", mailReceiver,csvName);
+			sendMailwithAuthenticator(subject,mailContent, "FineMifi_Report_priceplan_174", mailReceiver,csvName);
+			
+			
+			//20180817
+			total = 0;
+			sql = "select a.serviceid,a.imsi,a.iccid ,MIN(C.DAY) START_DATE, SUM(C.VOLUME)/1024/1024 VOLUME_MB,d.COUNTRY " 
+					+ "from imsi a,service b,HUR_CURRENT_DAY c,("
+					+ "			Select serviceid,wm_concat(MCCMNC) COUNTRY "
+					+ "			from ("
+					+ "				select distinct serviceid,mccmnc"
+					+ "				from HUR_CURRENT_DAY"
+					+ " 			)	"
+					+ "			GROUP by SERVICEID 		) d " 
+					+ "where a.serviceid = b.serviceid and a.serviceid = c.serviceid(+) and a.serviceid = d.serviceid(+) " 
+					+ "and b.priceplanid = 180 " 
+					+ "AND ((c.DAY >= '20180118' AND c.DAY<='"+today+"') or c.day is null) "
+					+ "group by a.serviceid,a.imsi,a.iccid,d.COUNTRY " 
+					+ "order by iccid ";
+			
+			
+			logger.info("Execute SQL : "+sql);
+			rs = st.executeQuery(sql);
+			data = new ArrayList<Map<String,Object>>();
+			while(rs.next()){
+				Map<String,Object> m = new HashMap<String,Object>();
+				double volume = Double.valueOf(rs.getString("VOLUME_MB")==null?"0":rs.getString("VOLUME_MB"));
+				m.put("IMSI", rs.getString("IMSI"));
+				m.put("START_DATE", rs.getString("START_DATE"));
+				m.put("VOLUME_MB", FormatDouble(volume, null));
+				m.put("ICCID",rs.getString("ICCID"));
+				m.put("MCCMNC",rs.getString("COUNTRY"));
+				data.add(m);
+				total+= volume;
+			}
+			csvName = "FineMifi-data-priceplan180-"+today.replace("/", "")+".xls";
+
+			createSheetFile(csvName,head,data,total);			
+			
+			//sendMail(subject,mailContent, "Joy_Report", mailReceiver,csvName);
+			sendMailwithAuthenticator(subject,mailContent, "FineMifi_Report_priceplan_180", mailReceiver,csvName);
 		} finally {
 			try {
 				if (rs != null)
@@ -1381,7 +1611,7 @@ public class DailyReport implements Runnable{
 	
 	//20180612 add
 	public void yunYoBoReport() throws Exception{
-
+		
 		Calendar c = Calendar.getInstance();
 		c.set(Calendar.DAY_OF_YEAR, c.get(Calendar.DAY_OF_YEAR)-1);
 		String today = sdf3.format(c.getTime());
@@ -1391,17 +1621,53 @@ public class DailyReport implements Runnable{
 		ResultSet rs = null;
 		double total = 0;
 		try {
-			String csvContent = "IMSI, START_DATE, VOLUME_MB";
+			String csvContent = "IMSI, START_DATE, VOLUME_MB,ICCID,NAME";
 			//String csvName = "Joy-TWdata"+today.replace("/", "")+".csv";
 			String csvName = "YunYoBo-data"+today.replace("/", "")+".xls";
 			
 			st = conn.createStatement();
 			
-			sql = "SELECT A.IMSI,A.ICCID, MIN(B.DAY) START_DATE, SUM(B.VOLUME)/1024/1024 VOLUME_MB " + 
+			/*sql = "SELECT A.IMSI,A.ICCID, MIN(B.DAY) START_DATE, SUM(B.VOLUME)/1024/1024 VOLUME_MB " + 
 					"from imsi a,HUR_CURRENT_DAY b, service c " + 
 					"WHERE a.serviceid = B.serviceid and a.serviceid = c.serviceid " + 
-					"and c.priceplanid in ("+props.getProperty("YunYoBo.pricePlanID", "175,176")+") " + 
-					"group by a.imsi,A.ICCID ";
+					"and c.priceplanid in ("+props.getProperty("YunYoBo.pricePlanID", "175,176")+") " +
+					"and b.day <= '"+today+"' " +
+					"group by c.priceplanid,a.imsi,A.ICCID " + 
+					"order by c.priceplanid asc,START_DATE DESC ";*/
+			
+			/*sql = "select IMSI,ICCID,START_DATE,VOLUME_MB,b.NAME "
+					+ "from ( "
+					+ "SELECT A.IMSI,A.ICCID, MIN(B.DAY) START_DATE, SUM(B.VOLUME)/1024/1024 VOLUME_MB ,c.priceplanid "
+					+ "from imsi a,HUR_CURRENT_DAY b, service c  "
+					+ "WHERE a.serviceid = B.serviceid and a.serviceid = c.serviceid   "
+					+ "and c.priceplanid in ("+props.getProperty("YunYoBo.pricePlanID", "175,176,178,179")+") "
+					+ "and b.day <= '"+today+"'  "
+					+ "group by c.priceplanid,a.imsi,A.ICCID  "
+					+ ") a,PRICEPLAN b "
+					+ "where a.priceplanid = b.priceplanid "
+					+ "order by a.priceplanid asc,START_DATE DESC";*/
+			
+			///20180807 add
+			sql = "select IMSI,ICCID,START_DATE,VOLUME_MB,b.NAME,c.COUNTRY "
+					+ "from ("
+					+ "			SELECT A.SERVICEID,A.IMSI,A.ICCID, MIN(B.DAY) START_DATE, SUM(B.VOLUME)/1024/1024 VOLUME_MB ,c.priceplanid "
+					+ "			from imsi a,HUR_CURRENT_DAY b, service c "
+					+ "			WHERE a.serviceid = B.serviceid and a.serviceid = c.serviceid "
+					+ "			and c.priceplanid in ("+props.getProperty("YunYoBo.pricePlanID", "175,176,178,179,181,186,187,188")+") "
+					+ "			and b.day <= '"+today+"'  "
+					+ "			group by c.priceplanid,a.SERVICEID,a.imsi,A.ICCID "
+					+ "		) a,PRICEPLAN b ,(	"
+			+ "								Select serviceid,wm_concat(MCCMNC) COUNTRY "
+			+ "								from ( "
+			+ "										select distinct serviceid,substr(B.MCCMNC,0,3)||B.COUNTRY||'('||B.NETWORK||')' mccmnc "
+			+ "										from HUR_CURRENT_DAY A,hur_MCCMNC B "
+			+ "										where substr(A.MCCMNC,0,3) = substr(B.MCCMNC,0,3) "
+			+ "										and substr(A.MCCMNC,4) = B.NETWORK "
+			+ "										order by mccmnc ) "
+			+ "								GROUP by SERVICEID "
+			+ "								) c "
+			+ "			where a.priceplanid = b.priceplanid and a.SERVICEID = c.SERVICEID "
+			+ "			order by b.NAME asc,START_DATE DESC ";
 			
 			logger.info("Execute SQL : "+sql);
 			rs = st.executeQuery(sql);
@@ -1418,6 +1684,8 @@ public class DailyReport implements Runnable{
 				m.put("START_DATE", rs.getString("START_DATE"));
 				m.put("VOLUME_MB", FormatDouble(volume, null));
 				m.put("ICCID",rs.getString("ICCID"));
+				m.put("NAME",rs.getString("NAME"));
+				m.put("COUNTRY",rs.getString("COUNTRY"));
 				data.add(m);
 				total+= volume;
 			}
@@ -1427,7 +1695,9 @@ public class DailyReport implements Runnable{
 			head.add(mapSetting("IMSI","IMSI"));
 			head.add(mapSetting("START_DATE","START_DATE"));
 			head.add(mapSetting("VOLUME_MB","VOLUME_MB"));
-			head.add(mapSetting("ICCID","ICCID"));
+			head.add(mapSetting("ICCID","ICCID","30"));
+			head.add(mapSetting("NAME","NAME","20"));
+			head.add(mapSetting("COUNTRY","COUNTRY"));
 		
 			createSheetFile(csvName,head,data,total);
 			String mailReceiver = props.getProperty("YunYoBo.recevier");
@@ -1455,6 +1725,88 @@ public class DailyReport implements Runnable{
 			} catch (Exception e) {	}
 		}
 	}
+	
+	//20180612 add
+		public void CCTReport() throws Exception{
+
+			Calendar c = Calendar.getInstance();
+			c.set(Calendar.DAY_OF_YEAR, c.get(Calendar.DAY_OF_YEAR)-1);
+			String today = sdf3.format(c.getTime());
+			
+			String sql = "";
+			Statement st = null;
+			ResultSet rs = null;
+			double total = 0;
+			try {
+				String csvContent = "IMSI, START_DATE, VOLUME_MB,ICCID";
+				//String csvName = "Joy-TWdata"+today.replace("/", "")+".csv";
+				String csvName = "CCT-data"+today.replace("/", "")+".xls";
+				
+				st = conn.createStatement();
+				
+				sql = ""
+						+ "SELECT A.IMSI,A.ICCID, MIN(B.DAY) START_DATE, SUM(B.VOLUME)/1024/1024 VOLUME_MB "
+						+ "from imsi a,HUR_CURRENT_DAY b, service c   "
+						+ "WHERE a.serviceid = B.serviceid and a.serviceid = c.serviceid    "
+						+ "and c.subsidiaryID in ("+props.getProperty("CCT.subsiDiaryID", "81")+")  "
+						+ "and b.day <= '"+today+"'   "
+						+ "group by c.serviceid,a.imsi,A.ICCID   "
+						+ "order by START_DATE DESC "
+						+ "";
+				
+				logger.info("Execute SQL : "+sql);
+				rs = st.executeQuery(sql);
+				List<Map<String,Object>> data = new ArrayList<Map<String,Object>>();
+				while(rs.next()){
+					if(!"".equals(csvContent))
+						csvContent+="\n";
+					csvContent+=rs.getString("IMSI")+","+rs.getString("START_DATE")+","+
+						FormatDouble(Double.valueOf(rs.getString("VOLUME_MB")==null?"0":rs.getString("VOLUME_MB")), null);
+				
+					Map<String,Object> m = new HashMap<String,Object>();
+					double volume = Double.valueOf(rs.getString("VOLUME_MB")==null?"0":rs.getString("VOLUME_MB"));
+					m.put("IMSI", rs.getString("IMSI"));
+					m.put("START_DATE", rs.getString("START_DATE"));
+					m.put("VOLUME_MB", FormatDouble(volume, null));
+					m.put("ICCID",rs.getString("ICCID"));
+					data.add(m);
+					total+= volume;
+				}
+				//createFile(csvName,csvContent);
+				
+				List<Map<String,String>> head = new ArrayList<Map<String,String>>();
+				head.add(mapSetting("IMSI","IMSI"));
+				head.add(mapSetting("START_DATE","START_DATE"));
+				head.add(mapSetting("VOLUME_MB","VOLUME_MB"));
+				head.add(mapSetting("ICCID","ICCID"));
+			
+				createSheetFile(csvName,head,data,total);
+				String mailReceiver = props.getProperty("CCT.recevier");
+				String subject = "CCT daily report-"+today.replace("/", "");
+				if(testMode || mailReceiver == null || "".equals(mailReceiver)){
+					mailReceiver = props.getProperty("default.recevier");
+					//subject = "Joy default Report";
+				}
+				
+				String mailContent = "Dear CCT colleagues,\n"
+						+ "\n"
+						+ "Please see the daily report.\n"
+						+ "Thank you very much.\n"
+						+ "\n"
+						+ "Sim2travel Inc.";
+				
+				//sendMail(subject,mailContent, "Joy_Report", mailReceiver,csvName);
+				sendMailwithAuthenticator(subject,mailContent, "CCT_Report", mailReceiver,csvName);
+			} finally {
+				try {
+					if (rs != null)
+						rs.close();
+					if (st != null)
+						st.close();
+				} catch (Exception e) {	}
+			}
+		}
+	
 	private static void applicationDailyReport() throws SQLException {
 		String sql = "select SERVICEID,MAX(VERIFIED_DATE) VERIFIED_DATE ,TYPE  " 
 				+ " from CRM_APPLICATION "  
@@ -1552,8 +1904,103 @@ public class DailyReport implements Runnable{
 					conn3.close();
 			} catch (Exception e) {	}
 		}
+	}
+	
+	//20180612 add
+	public void FanTravelReport() throws Exception{
 		
+		Calendar c = Calendar.getInstance();
+		c.set(Calendar.DAY_OF_YEAR, c.get(Calendar.DAY_OF_YEAR)-1);
+		String today = sdf3.format(c.getTime());
 		
+		String sql = "";
+		Statement st = null;
+		ResultSet rs = null;
+		double total = 0;
+		try {
+			String csvContent = "IMSI, START_DATE, VOLUME_MB,ICCID,NAME";
+			//String csvName = "Joy-TWdata"+today.replace("/", "")+".csv";
+			String csvName = "FanTravel-data"+today.replace("/", "")+".xls";
+			
+			st = conn.createStatement();
+			
+			///20180807 add
+			sql = "select IMSI,ICCID,START_DATE,VOLUME_MB,b.NAME,c.COUNTRY "
+					+ "from ("
+					+ "			SELECT A.SERVICEID,A.IMSI,A.ICCID, MIN(B.DAY) START_DATE, SUM(B.VOLUME)/1024/1024 VOLUME_MB ,c.priceplanid "
+					+ "			from imsi a,HUR_CURRENT_DAY b, service c "
+					+ "			WHERE a.serviceid = B.serviceid and a.serviceid = c.serviceid "
+					+ "			and c.priceplanid in ("+props.getProperty("FanTravel.pricePlanID", "184,185")+") "
+					+ "			and b.day <= '"+today+"'  "
+					+ "			group by c.priceplanid,a.SERVICEID,a.imsi,A.ICCID "
+					+ "		) a,PRICEPLAN b ,(	"
+			+ "								Select serviceid,wm_concat(MCCMNC) COUNTRY "
+			+ "								from ( "
+			+ "										select distinct serviceid,substr(B.MCCMNC,0,3)||B.COUNTRY||'('||B.NETWORK||')' mccmnc "
+			+ "										from HUR_CURRENT_DAY A,hur_MCCMNC B "
+			+ "										where substr(A.MCCMNC,0,3) = substr(B.MCCMNC,0,3) "
+			+ "										and substr(A.MCCMNC,4) = B.NETWORK "
+			+ "										order by mccmnc ) "
+			+ "								GROUP by SERVICEID "
+			+ "								) c "
+			+ "			where a.priceplanid = b.priceplanid and a.SERVICEID = c.SERVICEID "
+			+ "			order by b.NAME asc,START_DATE DESC ";
+			
+			logger.info("Execute SQL : "+sql);
+			rs = st.executeQuery(sql);
+			List<Map<String,Object>> data = new ArrayList<Map<String,Object>>();
+			while(rs.next()){
+				if(!"".equals(csvContent))
+					csvContent+="\n";
+				csvContent+=rs.getString("IMSI")+","+rs.getString("START_DATE")+","+
+					FormatDouble(Double.valueOf(rs.getString("VOLUME_MB")==null?"0":rs.getString("VOLUME_MB")), null);
+			
+				Map<String,Object> m = new HashMap<String,Object>();
+				double volume = Double.valueOf(rs.getString("VOLUME_MB")==null?"0":rs.getString("VOLUME_MB"));
+				m.put("IMSI", rs.getString("IMSI"));
+				m.put("START_DATE", rs.getString("START_DATE"));
+				m.put("VOLUME_MB", FormatDouble(volume, null));
+				m.put("ICCID",rs.getString("ICCID"));
+				m.put("NAME",rs.getString("NAME"));
+				m.put("COUNTRY",rs.getString("COUNTRY"));
+				data.add(m);
+				total+= volume;
+			}
+			//createFile(csvName,csvContent);
+			
+			List<Map<String,String>> head = new ArrayList<Map<String,String>>();
+			head.add(mapSetting("IMSI","IMSI"));
+			head.add(mapSetting("START_DATE","START_DATE"));
+			head.add(mapSetting("VOLUME_MB","VOLUME_MB"));
+			head.add(mapSetting("ICCID","ICCID","30"));
+			head.add(mapSetting("NAME","NAME","20"));
+			head.add(mapSetting("COUNTRY","COUNTRY"));
+		
+			createSheetFile(csvName,head,data,total);
+			String mailReceiver = props.getProperty("FanTravel.recevier");
+			String subject = "FanTravel daily report-"+today.replace("/", "");
+			if(testMode || mailReceiver == null || "".equals(mailReceiver)){
+				mailReceiver = props.getProperty("default.recevier");
+				//subject = "Joy default Report";
+			}
+			
+			String mailContent = "Dear FanTravel colleagues,\n"
+					+ "\n"
+					+ "Please see the daily report.\n"
+					+ "Thank you very much.\n"
+					+ "\n"
+					+ "Sim2travel Inc.";
+			
+			//sendMail(subject,mailContent, "Joy_Report", mailReceiver,csvName);
+			sendMailwithAuthenticator(subject,mailContent, "FanTravel_Report", mailReceiver,csvName);
+		} finally {
+			try {
+				if (rs != null)
+					rs.close();
+				if (st != null)
+					st.close();
+			} catch (Exception e) {	}
+		}
 	}
 	
 	private static Map<String,String> mapSetting(String name,String col,String size){
@@ -2043,11 +2490,11 @@ public class DailyReport implements Runnable{
 	
 	public static String convertString(String msg,String sCharset,String dCharset) throws UnsupportedEncodingException{
 			
-			if(msg==null)
-				msg=" ";
-			
-			return sCharset==null? new String(msg.getBytes(),dCharset):new String(msg.getBytes(sCharset),dCharset);
-		}
+		if(msg==null)
+			msg=" ";
+		
+		return sCharset==null? new String(msg.getBytes(),dCharset):new String(msg.getBytes(sCharset),dCharset);
+	}
 	public static String nvl(Object msg,String s){
 		if(msg==null)
 			msg = s;
